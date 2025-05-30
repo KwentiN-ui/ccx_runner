@@ -31,33 +31,64 @@ class Hauptfenster:
                     label="Stop Job", callback=self.kill_job, show=False
                 )
 
-            with dpg.tab_bar():
+            with dpg.tab_bar() as self.tab_bar:
                 with dpg.tab(label="Console"):
-                    self.console_filter_input = dpg.add_input_text(label="search", callback=self.callback_filter_input)
+                    self.console_filter_input = dpg.add_input_text(
+                        label="search", callback=self.callback_filter_input
+                    )
                     with dpg.child_window(height=-1) as self.console_out_cw:
                         self.console_out = dpg.add_input_text(
                             multiline=True, readonly=True, height=-1
                         )
+                with dpg.tab(label="Overview"):
+                    self.step_selection_combo = dpg.add_combo(
+                        callback=self.update_solver_status
+                    )
 
-                with dpg.tab(label="Solver Overview"):
-                    with dpg.group(horizontal=True):
-                        self.step_selection_combo = dpg.add_combo()
-                
-                with dpg.tab(label="Residuals"):
-                    pass
+                    # Übersichtstabelle
+                    with dpg.table() as self.table:
+                        dpg.add_table_column(label="Increment #")
+                        dpg.add_table_column(label="Attempt")
+                        dpg.add_table_column(label="Iterations")
+                        dpg.add_table_column(label="delta Time")
+                        dpg.add_table_column(label="total Time")
 
         self.update_available_jobs()
         self.process = None
 
+    @property
+    def selected_step(self):
+        selection = dpg.get_value(self.step_selection_combo)
+        for step in self.status.steps:
+            if step.name == selection:
+                return step
+
     def update_solver_status(self):
-        dpg.configure_item(self.step_selection_combo, items=[step.name for step in self.status.steps])
+        dpg.configure_item(
+            self.step_selection_combo, items=[step.name for step in self.status.steps]
+        )
+        # Clear all rows from the table
+        for child in dpg.get_item_children(self.table, slot=1):  # type: ignore
+            dpg.delete_item(child)
+        step = self.selected_step
+        if step:
+            for increment in step.increments:
+                with dpg.table_row(parent=self.table):
+                    dpg.add_text(str(increment.number))  # Increment #
+                    dpg.add_text(str(increment.attempt))  # Attempt
+                    dpg.add_text(str(len(increment.iterations)))  # Increments
+                    dpg.add_text(str(increment.incremental_time))  # delta T
+                    dpg.add_text(str(increment.total_time))  # total T
 
     def callback_filter_input(self):
         query = dpg.get_value(self.console_filter_input)
         if query == "":
             dpg.set_value(self.console_out, "".join(self._console_out))
         else:
-            dpg.set_value(self.console_out, "".join([line for line in self._console_out if query in line]))
+            dpg.set_value(
+                self.console_out,
+                "".join([line for line in self._console_out if query in line]),
+            )
 
     def add_console_text(self, text: str):
         self._console_out.append(text)
