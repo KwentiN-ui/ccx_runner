@@ -92,22 +92,22 @@ class Hauptfenster:
                     dpg.add_text(str(increment.incremental_time))  # delta T
                     dpg.add_text(str(increment.total_time))  # total T
 
-        # Plot Update
-        for item in dpg.get_item_children(self.plot_y_axis, 1):  # type: ignore
-            if dpg.does_item_exist(item):
-                dpg.delete_item(item)
-
         if self.status.steps:
             if self.status.steps[-1].increments:
                 for label, data in (
                     self.status.steps[-1].increments[-1].residuals.items()
                 ):
-                    dpg.add_line_series(
-                        tuple(range(len(data))),
-                        data,
-                        label=label,
-                        parent=self.plot_y_axis,
-                    )
+                    if label not in self.plotted_keys:
+                        self.plotted_keys.append(label)
+                        dpg.add_line_series(
+                            tuple(range(len(data))),
+                            data,
+                            label=label,
+                            parent=self.plot_y_axis,
+                            tag=label
+                        )
+                    else:
+                        dpg.set_value(label, [tuple(range(len(data))), data])
 
     def callback_filter_input(self):
         query = dpg.get_value(self.console_filter_input)
