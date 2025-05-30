@@ -2,6 +2,8 @@ import dearpygui.dearpygui as dpg
 import subprocess
 import sys
 import os
+import threading
+import time
 
 
 class Hauptfenster:
@@ -15,27 +17,31 @@ class Hauptfenster:
                 label="Job Directory",
                 default_value="/media/qhuss/76a9dfaf-c78f-4c2f-a48c-5a6b936cdb8d/PrePoMax/PrePoMax v2.3.4 dev/Temp/",
             )
-            self.job_name_inp = dpg.add_input_text(label="Job Name", default_value="shell_solid_conn")
+            self.job_name_inp = dpg.add_input_text(
+                label="Job Name",
+                default_value="shell_solid_conn",  # shell_solid_conn, kontaktbedingungen
+            )
             with dpg.group(horizontal=True):
                 dpg.add_button(label="Run Job", callback=self.start_job)
                 dpg.add_button(label="Plot Residuals")
-                self.kill_job_btn = dpg.add_button(label="Stop Job", callback=self.kill_job, show=False)
+                self.kill_job_btn = dpg.add_button(
+                    label="Stop Job", callback=self.kill_job, show=False
+                )
 
-            self.console_out = dpg.add_input_text(multiline=True, readonly=True, height=-1, scientific=True)
+            self.timer_id = dpg.add_text(default_value="0s")
+            self.console_out = dpg.add_input_text(
+                multiline=True, readonly=True, height=-1
+            )
+
+        self.process = None
+        self.process_running = False  # Flag to track process status
 
     def add_console_text(self, text: str):
         self._console_out.append(text)
         dpg.set_value(self.console_out, "".join(self._console_out))
 
-    def kill_job(self):
-        self.process.kill()
-        dpg.hide_item(self.kill_job_btn)
-
-    def start_job(self):
-        dpg.show_item(self.kill_job_btn)
-        self._console_out.clear()
-        dpg.set_value(self.console_out, "".join(self._console_out))
-
+    def run_ccx(self):
+        dpg.set_value(self.timer_id, "RUNNING")
         projekt = os.path.join(
             dpg.get_value(self.job_directory_inp), dpg.get_value(self.job_name_inp)
         )
@@ -48,18 +54,41 @@ class Hauptfenster:
                 bufsize=1,
             )
 
-            if self.process.stdout:
-                for line in self.process.stdout:
-                    self.add_console_text(line)
+            while self.process.poll() is None:
+                if self.process.stdout:
+                    for line in self.process.stdout:
+                        self.add_console_text(line)
 
-            if self.process.stderr:
-                for line in self.process.stderr:
-                    print(line, file=sys.stderr, end="")  # Print errors to stderr
+                if self.process.stderr:
+                    for line in self.process.stderr:
+                        self.add_console_text(line)
 
-            return_code = self.process.wait()
+            return_code = self.process.returncode
             if return_code != 0:
-                print(f"ccx exited with error code: {return_code}", file=sys.stderr)
+                self.add_console_text(f"ccx exited with error code: {return_code}")
+
+            self.reset_after_process()
 
         except Exception as e:
-            print(e)
+            self.add_console_text(str(e))
+            self.reset_after_process()
+
+    def reset_after_process(self):
+        self.process_running = False
         dpg.hide_item(self.kill_job_btn)
+        self.process = None
+
+    def start_job(self):
+        if self.process is not None:  # Prevent starting multiple jobs
+            return
+
+        dpg.show_item(self.kill_job_btn)
+        dpg.set_value(self.console_out, "")
+
+        self.process_running = True
+        self.thread = threading.Thread(target=self.run_ccx, daemon=True)
+        self.thread.start()
+
+    def kill_job(self):
+        if self.process:
+            self.process.kill()
