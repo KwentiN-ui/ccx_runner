@@ -53,6 +53,18 @@ class Hauptfenster:
                         dpg.add_table_column(label="delta Time")
                         dpg.add_table_column(label="total Time")
 
+                with dpg.tab(label="Residuals"):
+                    self.plotted_keys = []
+                    with dpg.plot(width=-1, height=-1) as self.plot:
+                        dpg.add_plot_legend()
+
+                        self.plot_x_axis = dpg.add_plot_axis(
+                            dpg.mvXAxis, label="Iteration"
+                        )
+                        self.plot_y_axis = dpg.add_plot_axis(
+                            dpg.mvYAxis, label="Residual"
+                        )
+
         self.update_available_jobs()
         self.process = None
 
@@ -79,6 +91,23 @@ class Hauptfenster:
                     dpg.add_text(str(len(increment.iterations)))  # Increments
                     dpg.add_text(str(increment.incremental_time))  # delta T
                     dpg.add_text(str(increment.total_time))  # total T
+
+        # Plot Update
+        for item in dpg.get_item_children(self.plot_y_axis, 1):  # type: ignore
+            if dpg.does_item_exist(item):
+                dpg.delete_item(item)
+
+        if self.status.steps:
+            if self.status.steps[-1].increments:
+                for label, data in (
+                    self.status.steps[-1].increments[-1].residuals.items()
+                ):
+                    dpg.add_line_series(
+                        tuple(range(len(data))),
+                        data,
+                        label=label,
+                        parent=self.plot_y_axis,
+                    )
 
     def callback_filter_input(self):
         query = dpg.get_value(self.console_filter_input)
@@ -110,34 +139,29 @@ class Hauptfenster:
         projekt = os.path.join(
             dpg.get_value(self.job_directory_inp), dpg.get_value(self.job_name_inp)
         )
-        try:
-            self.process = subprocess.Popen(
-                [f"{dpg.get_value(self.ccx_name_inp)}", projekt],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-            )
+        self.process = subprocess.Popen(
+            [f"{dpg.get_value(self.ccx_name_inp)}", projekt],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
 
-            while self.process.poll() is None:
-                if self.process.stdout:
-                    for line in self.process.stdout:
-                        self.add_console_text(line)
-                        self.status.parse(line)
+        while self.process.poll() is None:
+            if self.process.stdout:
+                for line in self.process.stdout:
+                    self.add_console_text(line)
+                    self.status.parse(line)
 
-                if self.process.stderr:
-                    for line in self.process.stderr:
-                        self.add_console_text(line)
+            if self.process.stderr:
+                for line in self.process.stderr:
+                    self.add_console_text(line)
 
-            return_code = self.process.returncode
-            if return_code != 0:
-                self.add_console_text(f"ccx exited with error code: {return_code}")
+        return_code = self.process.returncode
+        if return_code != 0:
+            self.add_console_text(f"ccx exited with error code: {return_code}")
 
-            self.reset_after_process()
-
-        except Exception as e:
-            self.add_console_text(str(e))
-            self.reset_after_process()
+        self.reset_after_process()
 
     def reset_after_process(self):
         dpg.hide_item(self.kill_job_btn)

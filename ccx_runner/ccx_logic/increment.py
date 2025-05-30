@@ -17,3 +17,12 @@ class Increment:
     @property
     def name(self) -> str:
         return f"Increment {self.number} attempt {self.attempt}"
+
+    @property
+    def residuals(self):
+        resid: dict[str, tuple[float,...]] = {}
+        if self.iterations:
+            keys = tuple(self.iterations[0].data.keys())
+            for key in keys:
+                resid[key] = tuple(iteration.data.get(key,0) for iteration in self.iterations)
+        return resid
