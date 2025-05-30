@@ -5,10 +5,13 @@ import os
 import threading
 import time
 
+from ccx_runner.ccx_logic.ccx_status import CalculixStatus
 
 class Hauptfenster:
     def __init__(self) -> None:
         self._console_out: list[str] = []
+        self.status = CalculixStatus()
+
         with dpg.window(label="Example Window") as self.id:
             self.ccx_name_inp = dpg.add_input_text(
                 label="Solver Name", default_value="ccx_2.19_MT"
@@ -28,20 +31,20 @@ class Hauptfenster:
                     label="Stop Job", callback=self.kill_job, show=False
                 )
 
-            self.timer_id = dpg.add_text(default_value="0s")
             self.console_out = dpg.add_input_text(
                 multiline=True, readonly=True, height=-1
             )
 
         self.process = None
-        self.process_running = False  # Flag to track process status
 
     def add_console_text(self, text: str):
         self._console_out.append(text)
         dpg.set_value(self.console_out, "".join(self._console_out))
 
+
     def run_ccx(self):
-        dpg.set_value(self.timer_id, "RUNNING")
+        self.status = CalculixStatus()
+        self.status.running = True
         projekt = os.path.join(
             dpg.get_value(self.job_directory_inp), dpg.get_value(self.job_name_inp)
         )
@@ -58,6 +61,7 @@ class Hauptfenster:
                 if self.process.stdout:
                     for line in self.process.stdout:
                         self.add_console_text(line)
+                        self.status.parse(line)
 
                 if self.process.stderr:
                     for line in self.process.stderr:
@@ -74,9 +78,9 @@ class Hauptfenster:
             self.reset_after_process()
 
     def reset_after_process(self):
-        self.process_running = False
         dpg.hide_item(self.kill_job_btn)
         self.process = None
+        self.status.running = False
 
     def start_job(self):
         if self.process is not None:  # Prevent starting multiple jobs
@@ -85,7 +89,6 @@ class Hauptfenster:
         dpg.show_item(self.kill_job_btn)
         dpg.set_value(self.console_out, "")
 
-        self.process_running = True
         self.thread = threading.Thread(target=self.run_ccx, daemon=True)
         self.thread.start()
 
