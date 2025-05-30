@@ -4,6 +4,7 @@ from ccx_runner.ccx_logic.increment import Increment
 
 class StepType(StrEnum):
     Static = auto()
+    Dynamic = auto()
 
 
 class Step:

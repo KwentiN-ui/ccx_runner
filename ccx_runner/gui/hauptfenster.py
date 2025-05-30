@@ -59,10 +59,10 @@ class Hauptfenster:
                         dpg.add_plot_legend()
 
                         self.plot_x_axis = dpg.add_plot_axis(
-                            dpg.mvXAxis, label="Iteration"
+                            dpg.mvXAxis, label="Iteration", auto_fit=True
                         )
                         self.plot_y_axis = dpg.add_plot_axis(
-                            dpg.mvYAxis, label="Residual"
+                            dpg.mvYAxis, label="Residual", auto_fit=True
                         )
 
         self.update_available_jobs()
@@ -104,7 +104,7 @@ class Hauptfenster:
                             data,
                             label=label,
                             parent=self.plot_y_axis,
-                            tag=label
+                            tag=label,
                         )
                     else:
                         dpg.set_value(label, [tuple(range(len(data))), data])
@@ -174,6 +174,7 @@ class Hauptfenster:
 
         dpg.show_item(self.kill_job_btn)
         dpg.set_value(self.console_out, "")
+        self._console_out.clear()
 
         self.thread = threading.Thread(target=self.run_ccx, daemon=True)
         self.thread.start()
