@@ -2,7 +2,8 @@ import dearpygui.dearpygui as dpg
 import subprocess
 import os
 import threading
-import pathlib
+from pathlib import Path
+import json
 
 from ccx_runner.ccx_logic.ccx_status import CalculixStatus
 
@@ -12,6 +13,7 @@ class Hauptfenster:
         self._console_out: list[str] = []
         self.status = CalculixStatus(self)
 
+        # SETUP GUI
         with dpg.window(label="Example Window") as self.id:
             self.ccx_name_inp = dpg.add_input_text(
                 label="Solver Pfad", default_value="/media/qhuss/76a9dfaf-c78f-4c2f-a48c-5a6b936cdb8d/CalculiX/ccx_2.19_MT"
@@ -133,8 +135,8 @@ class Hauptfenster:
         )
 
     def run_ccx(self):
-        ccx_solver = pathlib.Path(dpg.get_value(self.ccx_name_inp))
-        job_dir = pathlib.Path(dpg.get_value(self.job_directory_inp))
+        ccx_solver = Path(dpg.get_value(self.ccx_name_inp))
+        job_dir = Path(dpg.get_value(self.job_directory_inp))
         job_name = dpg.get_value(self.job_name_inp)
 
         self.status = CalculixStatus(self)
