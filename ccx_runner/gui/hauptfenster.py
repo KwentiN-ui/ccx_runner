@@ -1,9 +1,8 @@
 import dearpygui.dearpygui as dpg
 import subprocess
-import sys
 import os
 import threading
-import time
+import pathlib
 
 from ccx_runner.ccx_logic.ccx_status import CalculixStatus
 
@@ -15,7 +14,7 @@ class Hauptfenster:
 
         with dpg.window(label="Example Window") as self.id:
             self.ccx_name_inp = dpg.add_input_text(
-                label="Solver Name", default_value="ccx_2.19_MT"
+                label="Solver Pfad", default_value="/media/qhuss/76a9dfaf-c78f-4c2f-a48c-5a6b936cdb8d/CalculiX/ccx_2.19_MT"
             )
             self.job_directory_inp = dpg.add_input_text(
                 label="Job Directory",
@@ -134,17 +133,19 @@ class Hauptfenster:
         )
 
     def run_ccx(self):
+        ccx_solver = pathlib.Path(dpg.get_value(self.ccx_name_inp))
+        job_dir = pathlib.Path(dpg.get_value(self.job_directory_inp))
+        job_name = dpg.get_value(self.job_name_inp)
+
         self.status = CalculixStatus(self)
         self.status.running = True
-        projekt = os.path.join(
-            dpg.get_value(self.job_directory_inp), dpg.get_value(self.job_name_inp)
-        )
         self.process = subprocess.Popen(
-            [f"{dpg.get_value(self.ccx_name_inp)}", projekt],
+            [f"{ccx_solver.resolve()}", f"{job_name}"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
+            cwd=job_dir.resolve()
         )
 
         while self.process.poll() is None:
