@@ -10,18 +10,14 @@ from ccx_runner.ccx_logic.ccx_status import CalculixStatus
 
 class Hauptfenster:
     def __init__(self) -> None:
+
         self._console_out: list[str] = []
         self.status = CalculixStatus(self)
 
         # SETUP GUI
         with dpg.window(label="Example Window") as self.id:
-            self.ccx_name_inp = dpg.add_input_text(
-                label="Solver Pfad", default_value="/media/qhuss/76a9dfaf-c78f-4c2f-a48c-5a6b936cdb8d/CalculiX/ccx_2.19_MT"
-            )
-            self.job_directory_inp = dpg.add_input_text(
-                label="Job Directory",
-                default_value="/media/qhuss/76a9dfaf-c78f-4c2f-a48c-5a6b936cdb8d/PrePoMax/PrePoMax v2.3.4 dev/Temp/",
-            )
+            self.ccx_name_inp = dpg.add_input_text(label="Solver Pfad")
+            self.job_directory_inp = dpg.add_input_text(label="Job Directory")
             with dpg.group(horizontal=True):
                 self.job_name_inp = dpg.add_combo()
                 dpg.add_button(label="refresh", callback=self.update_available_jobs)
@@ -65,6 +61,15 @@ class Hauptfenster:
                         self.plot_y_axis = dpg.add_plot_axis(
                             dpg.mvYAxis, label="Residual", auto_fit=True
                         )
+
+        self.path_manager = PathHistoryManager("ccx_runner")
+        last_known_paths = self.path_manager.load_paths()
+        dpg.configure_item(
+            self.ccx_name_inp, default_value=last_known_paths.get("ccx_name", "")
+        )
+        dpg.configure_item(
+            self.job_directory_inp, default_value=last_known_paths.get("job_dir", "")
+        )
 
         self.update_available_jobs()
         self.process = None
@@ -125,16 +130,28 @@ class Hauptfenster:
         dpg.set_value(self.console_out, "".join(self._console_out))
 
     def update_available_jobs(self):
-        dpg.configure_item(
-            self.job_name_inp,
-            items=[
+        try:
+            items: list[str] = [
                 datei.split(".")[0]
                 for datei in os.listdir(dpg.get_value(self.job_directory_inp))
                 if datei.endswith(".inp")
-            ],
+            ]
+        except FileNotFoundError:
+            items = []
+
+        dpg.configure_item(
+            self.job_name_inp,
+            items=items,
         )
 
     def run_ccx(self):
+        self.path_manager.save_paths(
+            {
+                "ccx_name": dpg.get_value(self.ccx_name_inp),
+                "job_dir": dpg.get_value(self.job_directory_inp),
+            }
+        )
+
         ccx_solver = Path(dpg.get_value(self.ccx_name_inp))
         job_dir = Path(dpg.get_value(self.job_directory_inp))
         job_name = dpg.get_value(self.job_name_inp)
@@ -147,7 +164,7 @@ class Hauptfenster:
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            cwd=job_dir.resolve()
+            cwd=job_dir.resolve(),
         )
 
         while self.process.poll() is None:
@@ -185,3 +202,40 @@ class Hauptfenster:
     def kill_job(self):
         if self.process:
             self.process.kill()
+
+
+class PathHistoryManager:
+    """Verwaltet das Speichern und Laden von Pfaden in einer Konfigurationsdatei."""
+
+    def __init__(self, app_name: str):
+        # Erstellt einen plattformunabhängigen Pfad im Benutzer-Konfigurationsverzeichnis
+        # Für Kubuntu/Linux: ~/.config/app_name/
+        # Für Windows: %APPDATA%/app_name/
+        self.config_dir = Path.home() / ".config" / app_name
+        self.config_file = self.config_dir / "last_paths.json"
+
+        # Sicherstellen, dass das Verzeichnis existiert
+        self.config_dir.mkdir(parents=True, exist_ok=True)
+
+    def save_paths(self, paths: dict):
+        """Speichert ein Dictionary von Pfaden in die JSON-Datei."""
+        try:
+            with open(self.config_file, "w") as f:
+                json.dump(paths, f, indent=4)
+            # print(f"Pfade gespeichert in: {self.config_file}")
+        except IOError as e:
+            print(f"Fehler beim Speichern der Pfade: {e}")
+
+    def load_paths(self) -> dict:
+        """Lädt die Pfade aus der JSON-Datei. Gibt ein leeres Dict zurück, wenn die Datei nicht existiert."""
+        if not self.config_file.exists():
+            return {}
+
+        try:
+            with open(self.config_file, "r") as f:
+                paths = json.load(f)
+                # print(f"Pfade geladen aus: {self.config_file}")
+                return paths
+        except (IOError, json.JSONDecodeError) as e:
+            # print(f"Fehler beim Laden der Pfade: {e}")
+            return {}
