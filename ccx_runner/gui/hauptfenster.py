@@ -51,7 +51,7 @@ class Hauptfenster:
                         self.plot_y_axis = dpg.add_plot_axis(
                             dpg.mvYAxis, label="Residual", auto_fit=True
                         )
-                    dpg.add_button(label="test", callback=self.update_table_data)
+
                     # Table
                     self.step_selection_combo = dpg.add_combo(
                         label="Step", callback=self.update_solver_status

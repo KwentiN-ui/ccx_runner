@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ccx_runner.ccx_logic.step import Step
-    from ccx_runner.ccx_logic.iteration import Iteration
+    from ccx_runner.ccx_logic.static.iteration import Iteration
 
 
 class Increment:

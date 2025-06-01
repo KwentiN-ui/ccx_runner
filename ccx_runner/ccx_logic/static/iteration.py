@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ccx_runner.ccx_logic.increment import Increment
+    from ccx_runner.ccx_logic.static.increment import Increment
 
 
 class Iteration:
