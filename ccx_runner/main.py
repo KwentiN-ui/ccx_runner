@@ -11,7 +11,10 @@ def main():
     dpg.show_viewport()
     dpg.set_primary_window(hauptfenster.id, True)
 
-    dpg.start_dearpygui()
+    while dpg.is_dearpygui_running():
+        dpg.render_dearpygui_frame()
+        hauptfenster.update()
+
     dpg.destroy_context()
 
 if __name__ == "__main__":

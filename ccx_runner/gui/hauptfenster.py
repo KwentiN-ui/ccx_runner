@@ -12,7 +12,7 @@ from ccx_runner.ccx_logic.status import CalculixStatus
 
 class Hauptfenster:
     def __init__(self) -> None:
-
+        self.startzeit = 0
         self._console_out: list[str] = []
         self.status = CalculixStatus(self)
         dpg.set_exit_callback(self.kill_job)
@@ -31,6 +31,7 @@ class Hauptfenster:
                 self.kill_job_btn = dpg.add_button(
                     label="Stop Job", callback=self.kill_job, show=False
                 )
+                self.timer = dpg.add_text(show=False)
 
             with dpg.tab_bar() as self.tab_bar:
                 with dpg.tab(label="Console"):
@@ -198,7 +199,10 @@ class Hauptfenster:
         )
 
         self.status = CalculixStatus(self)
+        self.startzeit = time.time()
+        dpg.show_item(self.timer)
         self.status.running = True
+
         self.process = subprocess.Popen(
             [f"{self.ccx_path.resolve()}", f"{self.job_name}"],
             stdout=subprocess.PIPE,
@@ -252,6 +256,13 @@ class Hauptfenster:
             self.process.wait()
             self.reset_after_process()
             self.add_console_text("Process successfully aborted!")
+
+    def update(self):
+        """
+        This runs for every frame
+        """
+        if self.status.running:
+            dpg.set_value(self.timer, f"{round(time.time() - self.startzeit,2)}s")
 
 
 class ConfigManager:
