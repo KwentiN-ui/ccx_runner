@@ -1,12 +1,13 @@
 import dearpygui.dearpygui as dpg
 import subprocess
 import os
+import time
 import threading
 from pathlib import Path
 import platformdirs
 import json
 
-from ccx_runner.ccx_logic.ccx_status import CalculixStatus
+from ccx_runner.ccx_logic.status import CalculixStatus
 
 
 class Hauptfenster:
@@ -14,7 +15,7 @@ class Hauptfenster:
 
         self._console_out: list[str] = []
         self.status = CalculixStatus(self)
-
+        dpg.set_exit_callback(self.kill_job)
         # SETUP GUI
         with dpg.window(label="Example Window") as self.id:
             self.ccx_name_inp = dpg.add_input_text(label="Solver Pfad")
@@ -24,7 +25,9 @@ class Hauptfenster:
                 dpg.add_button(label="refresh", callback=self.update_available_jobs)
 
             with dpg.group(horizontal=True):
-                dpg.add_button(label="Run Job", callback=self.start_job)
+                self.start_job_btn = dpg.add_button(
+                    label="Run Job", callback=self.start_job
+                )
                 self.kill_job_btn = dpg.add_button(
                     label="Stop Job", callback=self.kill_job, show=False
                 )
@@ -41,7 +44,7 @@ class Hauptfenster:
 
                 with dpg.tab(label="Overview"):
                     # Residual Plot
-                    self.plotted_keys = []
+                    self._plotted_keys = []
                     with dpg.plot(width=-1) as self.plot:
                         dpg.add_plot_legend()
 
@@ -86,6 +89,22 @@ class Hauptfenster:
                 for eintrag in zeile:
                     dpg.add_text(str(eintrag))
 
+    def update_residual_plot(self):
+        if self.status.steps:
+            step = self.status.steps[-1]
+            for label, data in step.residuals.items():
+                if label not in self._plotted_keys:
+                    self._plotted_keys.append(label)
+                    dpg.add_line_series(
+                        tuple(range(len(data))),
+                        data,
+                        label=label,
+                        parent=self.plot_y_axis,
+                        tag=label,
+                    )
+                else:
+                    dpg.set_value(label, [tuple(range(len(data))), data])
+
     @property
     def selected_step(self):
         selection = dpg.get_value(self.step_selection_combo)
@@ -113,21 +132,7 @@ class Hauptfenster:
             self.step_selection_combo, items=[step.name for step in self.status.steps]
         )
         self.update_table_data()
-
-        if self.status.steps:
-            step = self.status.steps[-1]
-            for label, data in step.residuals.items():
-                if label not in self.plotted_keys:
-                    self.plotted_keys.append(label)
-                    dpg.add_line_series(
-                        tuple(range(len(data))),
-                        data,
-                        label=label,
-                        parent=self.plot_y_axis,
-                        tag=label,
-                    )
-                else:
-                    dpg.set_value(label, [tuple(range(len(data))), data])
+        self.update_residual_plot()
 
     def update_console_output(self):
         query: str = dpg.get_value(self.console_filter_input)
@@ -145,6 +150,10 @@ class Hauptfenster:
                     ]
                 ),
             )
+
+    def reset_residual_plot(self):
+        self._plotted_keys = []
+        dpg.delete_item(self.plot_y_axis, children_only=True)
 
     def add_console_text(self, text: str):
         self._console_out.append(text)
@@ -199,17 +208,20 @@ class Hauptfenster:
             cwd=self.job_dir.resolve(),
         )
 
-        while self.process.poll() is None:
-            if self.process.stdout:
-                for line in self.process.stdout:
-                    self.add_console_text(line)
-                    self.status.parse(line)
+        try:
+            while self.process.poll() is None:
+                if self.process.stdout:
+                    for line in self.process.stdout:
+                        self.add_console_text(line)
+                        self.status.parse(line)
 
-            if self.process.stderr:
-                for line in self.process.stderr:
-                    self.add_console_text(line)
+                if self.process.stderr:
+                    for line in self.process.stderr:
+                        self.add_console_text(line)
+        except AttributeError:
+            pass
 
-        return_code = self.process.returncode
+        return_code = self.process.returncode if self.process else 0
         if return_code != 0:
             self.add_console_text(f"ccx exited with error code: {return_code}")
 
@@ -217,6 +229,7 @@ class Hauptfenster:
 
     def reset_after_process(self):
         dpg.hide_item(self.kill_job_btn)
+        dpg.show_item(self.start_job_btn)
         self.process = None
         self.status.running = False
 
@@ -224,7 +237,9 @@ class Hauptfenster:
         if self.process is not None:  # Prevent starting multiple jobs
             return
 
+        self.reset_residual_plot()
         dpg.show_item(self.kill_job_btn)
+        dpg.hide_item(self.start_job_btn)
         dpg.set_value(self.console_out, "")
         self._console_out.clear()
 
@@ -233,7 +248,10 @@ class Hauptfenster:
 
     def kill_job(self):
         if self.process:
-            self.process.kill()
+            self.process.terminate()
+            self.process.wait()
+            self.reset_after_process()
+            self.add_console_text("Process successfully aborted!")
 
 
 class ConfigManager:

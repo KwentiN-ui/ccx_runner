@@ -29,6 +29,7 @@ class CalculixStatus:
             if step:
                 number = len(self.steps) + 1
                 self.steps.append(step(self.hauptfenster, number))
+                self.hauptfenster.reset_residual_plot()
 
         # relay the line to the corresponding step
         if self.steps:
