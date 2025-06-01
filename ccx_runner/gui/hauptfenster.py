@@ -51,17 +51,12 @@ class Hauptfenster:
                         self.plot_y_axis = dpg.add_plot_axis(
                             dpg.mvYAxis, label="Residual", auto_fit=True
                         )
-
+                    dpg.add_button(label="test", callback=self.update_table_data)
                     # Table
                     self.step_selection_combo = dpg.add_combo(
                         label="Step", callback=self.update_solver_status
                     )
-                    with dpg.table() as self.table:
-                        dpg.add_table_column(label="Increment #")
-                        dpg.add_table_column(label="Attempt")
-                        dpg.add_table_column(label="Iterations")
-                        dpg.add_table_column(label="delta Time")
-                        dpg.add_table_column(label="total Time")
+                    self.table = dpg.add_table(height=-1)
 
         self.path_manager = ConfigManager("ccx_runner")
         last_known_paths = self.path_manager.load_paths()
@@ -74,6 +69,22 @@ class Hauptfenster:
 
         self.update_available_jobs()
         self.process = None
+
+    def update_table_data(self):
+        step = self.selected_step
+        if not step:
+            return
+
+        # reset Table
+        dpg.delete_item(self.table, children_only=True)
+
+        data = step.tabular_data
+        for header in data.keys():
+            dpg.add_table_column(label=header, parent=self.table)
+        for zeile in zip(*data.values()):
+            with dpg.table_row(parent=self.table):
+                for eintrag in zeile:
+                    dpg.add_text(str(eintrag))
 
     @property
     def selected_step(self):
@@ -101,18 +112,7 @@ class Hauptfenster:
         dpg.configure_item(
             self.step_selection_combo, items=[step.name for step in self.status.steps]
         )
-        # Clear all rows from the table
-        for child in dpg.get_item_children(self.table, slot=1):  # type: ignore
-            dpg.delete_item(child)
-        step = self.selected_step
-        if step:
-            for increment in step.increments:
-                with dpg.table_row(parent=self.table):
-                    dpg.add_text(str(increment.number))  # Increment #
-                    dpg.add_text(str(increment.attempt))  # Attempt
-                    dpg.add_text(str(len(increment.iterations)))  # Increments
-                    dpg.add_text(str(increment.incremental_time))  # delta T
-                    dpg.add_text(str(increment.total_time))  # total T
+        self.update_table_data()
 
         if self.status.steps:
             step = self.status.steps[-1]

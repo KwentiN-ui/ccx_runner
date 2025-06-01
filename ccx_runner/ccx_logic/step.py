@@ -25,7 +25,7 @@ class Step(Protocol):
     @property
     def residuals(self) -> dict[str, tuple[float, ...]]: ...
     @property
-    def tabular_data(self) -> dict[str, tuple[Any]]: ...
+    def tabular_data(self) -> dict[str, tuple[Any, ...]]: ...
 
 
 class StaticStep:
@@ -48,8 +48,15 @@ class StaticStep:
         return self.cur_increment.iterations[-1]
 
     @property
-    def tabular_data(self) -> dict[str, tuple[Any]]:
-        return {}
+    def tabular_data(self) -> dict[str, tuple[Any, ...]]:
+        data: dict[str, tuple[Any, ...]] = {
+            "Increment #": tuple(inc.number for inc in self.increments),
+            "Attempt": tuple(inc.attempt for inc in self.increments),
+            "Iterations #": tuple(len(inc.iterations) for inc in self.increments),
+            "delta Time": tuple(inc.incremental_time for inc in self.increments),
+            "total Time": tuple(inc.total_time for inc in self.increments),
+        }
+        return data
 
     @property
     def residuals(self) -> dict[str, tuple[float, ...]]:
@@ -130,35 +137,10 @@ class DynamicStep:
         return {key: tuple(value) for key, value in self._residuals.items()}
 
     @property
-    def tabular_data(self) -> dict[str, tuple[Any]]:
+    def tabular_data(self) -> dict[str, tuple[Any, ...]]:
         return {}
 
     def parse(self, line: str):
         if line.startswith("actual total time="):
             self.increments.append(Increment(self, len(self.increments) + 1, 0))
             self.fenster.update_solver_status()
-
-
-class FrequencyStep:
-    def __init__(
-        self, fenster: "Hauptfenster", number: int, update_call: Callable
-    ) -> None:
-        self.fenster = fenster
-        self.number = number
-        self.increments: list[Increment] = []
-        self.parsed_lines: list[str] = []
-
-    @property
-    def name(self) -> str:
-        return f"DynamicStep {self.number}"
-
-    @property
-    def cur_increment(self):
-        return self.increments[-1]
-
-    @property
-    def cur_iteration(self):
-        return self.cur_increment.iterations[-1]
-
-    def parse(self, line: str):
-        pass
