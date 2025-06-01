@@ -95,6 +95,9 @@ class Hauptfenster:
         return dpg.get_value(self.job_name_inp)
 
     def update_solver_status(self):
+        """
+        Redraw the Overview table and residual plot.
+        """
         dpg.configure_item(
             self.step_selection_combo, items=[step.name for step in self.status.steps]
         )
@@ -113,19 +116,18 @@ class Hauptfenster:
 
         if self.status.steps:
             step = self.status.steps[-1]
-            if step.increments:
-                for label, data in step.increments[-1].residuals.items():
-                    if label not in self.plotted_keys:
-                        self.plotted_keys.append(label)
-                        dpg.add_line_series(
-                            tuple(range(len(data))),
-                            data,
-                            label=label,
-                            parent=self.plot_y_axis,
-                            tag=label,
-                        )
-                    else:
-                        dpg.set_value(label, [tuple(range(len(data))), data])
+            for label, data in step.residuals.items():
+                if label not in self.plotted_keys:
+                    self.plotted_keys.append(label)
+                    dpg.add_line_series(
+                        tuple(range(len(data))),
+                        data,
+                        label=label,
+                        parent=self.plot_y_axis,
+                        tag=label,
+                    )
+                else:
+                    dpg.set_value(label, [tuple(range(len(data))), data])
 
     def update_console_output(self):
         query: str = dpg.get_value(self.console_filter_input)

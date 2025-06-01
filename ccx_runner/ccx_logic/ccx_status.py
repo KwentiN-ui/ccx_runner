@@ -27,7 +27,7 @@ class CalculixStatus:
                 step = DynamicStep
             if step:
                 number = len(self.steps) + 1
-                self.steps.append(step(number, self.hauptfenster.update_solver_status))
+                self.steps.append(step(self.hauptfenster, number))
 
         # relay the line to the corresponding step
         if self.steps:
