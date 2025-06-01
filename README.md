@@ -3,11 +3,11 @@
 ## Features
 
 ## Installation
-### Option 1: Using `pipx`
-1. Install the pipx utility
+### Option 1: Using `pipx` (recommended)
+1. Install [pipx](https://pipx.pypa.io/stable/)
 2. Run
 ```bash
-pipx install https://github.com/KwentiN-ui/ccx_runner.git
+pipx install git+https://github.com/KwentiN-ui/ccx_runner.git
 ```
 
 ### Option 2: Build using `pyinstaller`
