@@ -1,7 +1,8 @@
 import re
-from ccx_runner.ccx_logic.step import Step, StaticStep, DynamicStep
-from ccx_runner.ccx_logic.increment import Increment
-from ccx_runner.ccx_logic.iteration import Iteration
+from ccx_runner.ccx_logic.static.StaticStep import StaticStep
+from ccx_runner.ccx_logic.step import Step, DynamicStep
+from ccx_runner.ccx_logic.static.increment import Increment
+from ccx_runner.ccx_logic.static.iteration import Iteration
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -27,7 +28,8 @@ class CalculixStatus:
                 step = DynamicStep
             if step:
                 number = len(self.steps) + 1
-                self.steps.append(step(number, self.hauptfenster.update_solver_status))
+                self.steps.append(step(self.hauptfenster, number))
+                self.hauptfenster.reset_residual_plot()
 
         # relay the line to the corresponding step
         if self.steps:
