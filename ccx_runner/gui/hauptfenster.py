@@ -3,6 +3,7 @@ import subprocess
 import os
 import threading
 from pathlib import Path
+import platformdirs
 import json
 
 from ccx_runner.ccx_logic.ccx_status import CalculixStatus
@@ -62,7 +63,7 @@ class Hauptfenster:
                             dpg.mvYAxis, label="Residual", auto_fit=True
                         )
 
-        self.path_manager = PathHistoryManager("ccx_runner")
+        self.path_manager = ConfigManager("ccx_runner")
         last_known_paths = self.path_manager.load_paths()
         dpg.configure_item(
             self.ccx_name_inp, default_value=last_known_paths.get("ccx_name", "")
@@ -204,21 +205,18 @@ class Hauptfenster:
             self.process.kill()
 
 
-class PathHistoryManager:
+class ConfigManager:
     """Verwaltet das Speichern und Laden von Pfaden in einer Konfigurationsdatei."""
 
     def __init__(self, app_name: str):
-        # Erstellt einen plattformunabhängigen Pfad im Benutzer-Konfigurationsverzeichnis
-        # Für Kubuntu/Linux: ~/.config/app_name/
-        # Für Windows: %APPDATA%/app_name/
-        self.config_dir = Path.home() / ".config" / app_name
-        self.config_file = self.config_dir / "last_paths.json"
+        # Gets the path to the users config directory (works for every platform)
+        self.config_dir = Path(platformdirs.user_config_dir("ccx_runner"))
+        self.config_file = self.config_dir / "config.json"
 
-        # Sicherstellen, dass das Verzeichnis existiert
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
     def save_paths(self, paths: dict):
-        """Speichert ein Dictionary von Pfaden in die JSON-Datei."""
+        """Saves configuration data as a JSON-file."""
         try:
             with open(self.config_file, "w") as f:
                 json.dump(paths, f, indent=4)
@@ -227,15 +225,13 @@ class PathHistoryManager:
             print(f"Fehler beim Speichern der Pfade: {e}")
 
     def load_paths(self) -> dict:
-        """Lädt die Pfade aus der JSON-Datei. Gibt ein leeres Dict zurück, wenn die Datei nicht existiert."""
+        """Loads config data from the json data file. Returns empty if it doesnt exist."""
         if not self.config_file.exists():
             return {}
 
         try:
             with open(self.config_file, "r") as f:
                 paths = json.load(f)
-                # print(f"Pfade geladen aus: {self.config_file}")
                 return paths
         except (IOError, json.JSONDecodeError) as e:
-            # print(f"Fehler beim Laden der Pfade: {e}")
             return {}
