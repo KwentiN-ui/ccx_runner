@@ -82,6 +82,18 @@ class Hauptfenster:
             if step.name == selection:
                 return step
 
+    @property
+    def ccx_path(self):
+        return Path(dpg.get_value(self.ccx_name_inp))
+    
+    @property
+    def job_dir(self):
+        return Path(dpg.get_value(self.job_directory_inp))
+    
+    @property
+    def job_name(self):
+        return dpg.get_value(self.job_name_inp)
+
     def update_solver_status(self):
         dpg.configure_item(
             self.step_selection_combo, items=[step.name for step in self.status.steps]
@@ -146,6 +158,17 @@ class Hauptfenster:
         )
 
     def run_ccx(self):
+        """
+        Runs the calculix subprocess and monitors its outputs.
+        """
+        # Check if paths are valid
+        if not self.ccx_path.is_file():
+            self.add_console_text(f"The given filepath for the Calculix Binary does not point to a file!:\n\"{self.ccx_path}\"")
+            return
+        if not self.job_dir.is_dir():
+            self.add_console_text(f"The given path for the job directory does not point to a directory!:\n\"{self.job_dir}\"")
+            return
+        
         self.path_manager.save_paths(
             {
                 "ccx_name": dpg.get_value(self.ccx_name_inp),
@@ -153,19 +176,15 @@ class Hauptfenster:
             }
         )
 
-        ccx_solver = Path(dpg.get_value(self.ccx_name_inp))
-        job_dir = Path(dpg.get_value(self.job_directory_inp))
-        job_name = dpg.get_value(self.job_name_inp)
-
         self.status = CalculixStatus(self)
         self.status.running = True
         self.process = subprocess.Popen(
-            [f"{ccx_solver.resolve()}", f"{job_name}"],
+            [f"{self.ccx_path.resolve()}", f"{self.job_name}"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
             bufsize=1,
-            cwd=job_dir.resolve(),
+            cwd=self.job_dir.resolve(),
         )
 
         while self.process.poll() is None:
@@ -206,7 +225,7 @@ class Hauptfenster:
 
 
 class ConfigManager:
-    """Verwaltet das Speichern und Laden von Pfaden in einer Konfigurationsdatei."""
+    """Handles the saving and loading of user configuration data as a JSON in the users config directory."""
 
     def __init__(self, app_name: str):
         # Gets the path to the users config directory (works for every platform)
