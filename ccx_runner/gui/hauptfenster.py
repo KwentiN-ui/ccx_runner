@@ -40,21 +40,9 @@ class Hauptfenster:
                     )
 
                 with dpg.tab(label="Overview"):
-                    self.step_selection_combo = dpg.add_combo(
-                        label="Step", callback=self.update_solver_status
-                    )
-
-                    # Übersichtstabelle
-                    with dpg.table() as self.table:
-                        dpg.add_table_column(label="Increment #")
-                        dpg.add_table_column(label="Attempt")
-                        dpg.add_table_column(label="Iterations")
-                        dpg.add_table_column(label="delta Time")
-                        dpg.add_table_column(label="total Time")
-
-                with dpg.tab(label="Residuals"):
+                    # Residual Plot
                     self.plotted_keys = []
-                    with dpg.plot(width=-1, height=-1) as self.plot:
+                    with dpg.plot(width=-1) as self.plot:
                         dpg.add_plot_legend()
 
                         self.plot_x_axis = dpg.add_plot_axis(
@@ -63,6 +51,17 @@ class Hauptfenster:
                         self.plot_y_axis = dpg.add_plot_axis(
                             dpg.mvYAxis, label="Residual", auto_fit=True
                         )
+
+                    # Table
+                    self.step_selection_combo = dpg.add_combo(
+                        label="Step", callback=self.update_solver_status
+                    )
+                    with dpg.table() as self.table:
+                        dpg.add_table_column(label="Increment #")
+                        dpg.add_table_column(label="Attempt")
+                        dpg.add_table_column(label="Iterations")
+                        dpg.add_table_column(label="delta Time")
+                        dpg.add_table_column(label="total Time")
 
         self.path_manager = ConfigManager("ccx_runner")
         last_known_paths = self.path_manager.load_paths()
