@@ -112,9 +112,10 @@ class Hauptfenster:
                     dpg.add_text(str(increment.total_time))  # total T
 
         if self.status.steps:
-            if self.status.steps[-1].increments:
+            step = self.status.steps[-1]
+            if step.increments:
                 for label, data in (
-                    self.status.steps[-1].increments[-1].residuals.items()
+                    step.increments[-1].residuals.items()
                 ):
                     if label not in self.plotted_keys:
                         self.plotted_keys.append(label)
