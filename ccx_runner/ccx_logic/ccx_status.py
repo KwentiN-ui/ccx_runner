@@ -1,5 +1,6 @@
 import re
-from ccx_runner.ccx_logic.step import Step, StaticStep, DynamicStep
+from ccx_runner.ccx_logic.static.StaticStep import StaticStep
+from ccx_runner.ccx_logic.step import Step, DynamicStep
 from ccx_runner.ccx_logic.static.increment import Increment
 from ccx_runner.ccx_logic.static.iteration import Iteration
 from typing import TYPE_CHECKING
