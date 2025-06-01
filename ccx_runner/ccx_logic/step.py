@@ -62,7 +62,6 @@ class StaticStep:
                 else:
                     name, _, wert = prev_line.partition("=")
                     iteration.data[name] = float(wert.strip().partition(" ")[0])
-                    print(name,wert)
 
         self.parsed_lines.append(line)
 

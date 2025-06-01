@@ -11,6 +11,6 @@ PyInstaller.__main__.run([
     'ccx_runner/main.py',
     '--onefile',
     '--name=CCX_Runner',
-    # '--windowed',
+    '--windowed',
     '--clean',
 ])

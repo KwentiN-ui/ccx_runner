@@ -32,15 +32,16 @@ class Hauptfenster:
             with dpg.tab_bar() as self.tab_bar:
                 with dpg.tab(label="Console"):
                     self.console_filter_input = dpg.add_input_text(
-                        label="search", callback=self.callback_filter_input
+                        callback=self.update_console_output,
+                        hint='Filter for keywords, use "|" for multiple',
                     )
-                    with dpg.child_window(height=-1) as self.console_out_cw:
-                        self.console_out = dpg.add_input_text(
-                            multiline=True, readonly=True, height=-1
-                        )
+                    self.console_out = dpg.add_input_text(
+                        multiline=True, readonly=True, height=-1
+                    )
+
                 with dpg.tab(label="Overview"):
                     self.step_selection_combo = dpg.add_combo(
-                        callback=self.update_solver_status
+                        label="Step", callback=self.update_solver_status
                     )
 
                     # Übersichtstabelle
@@ -85,11 +86,11 @@ class Hauptfenster:
     @property
     def ccx_path(self):
         return Path(dpg.get_value(self.ccx_name_inp))
-    
+
     @property
     def job_dir(self):
         return Path(dpg.get_value(self.job_directory_inp))
-    
+
     @property
     def job_name(self):
         return dpg.get_value(self.job_name_inp)
@@ -114,9 +115,7 @@ class Hauptfenster:
         if self.status.steps:
             step = self.status.steps[-1]
             if step.increments:
-                for label, data in (
-                    step.increments[-1].residuals.items()
-                ):
+                for label, data in step.increments[-1].residuals.items():
                     if label not in self.plotted_keys:
                         self.plotted_keys.append(label)
                         dpg.add_line_series(
@@ -129,19 +128,26 @@ class Hauptfenster:
                     else:
                         dpg.set_value(label, [tuple(range(len(data))), data])
 
-    def callback_filter_input(self):
-        query = dpg.get_value(self.console_filter_input)
+    def update_console_output(self):
+        query: str = dpg.get_value(self.console_filter_input)
         if query == "":
             dpg.set_value(self.console_out, "".join(self._console_out))
         else:
+            suchbegriffe = [wort.strip() for wort in query.split("|")]
             dpg.set_value(
                 self.console_out,
-                "".join([line for line in self._console_out if query in line]),
+                "".join(
+                    [
+                        line
+                        for line in self._console_out
+                        if any(suchbegriff in line for suchbegriff in suchbegriffe)
+                    ]
+                ),
             )
 
     def add_console_text(self, text: str):
         self._console_out.append(text)
-        dpg.set_value(self.console_out, "".join(self._console_out))
+        self.update_console_output()
 
     def update_available_jobs(self):
         try:
@@ -164,12 +170,16 @@ class Hauptfenster:
         """
         # Check if paths are valid
         if not self.ccx_path.is_file():
-            self.add_console_text(f"The given filepath for the Calculix Binary does not point to a file!:\n\"{self.ccx_path}\"")
+            self.add_console_text(
+                f'The given filepath for the Calculix Binary does not point to a file!:\n"{self.ccx_path}"'
+            )
             return
         if not self.job_dir.is_dir():
-            self.add_console_text(f"The given path for the job directory does not point to a directory!:\n\"{self.job_dir}\"")
+            self.add_console_text(
+                f'The given path for the job directory does not point to a directory!:\n"{self.job_dir}"'
+            )
             return
-        
+
         self.path_manager.save_paths(
             {
                 "ccx_name": dpg.get_value(self.ccx_name_inp),
