@@ -27,7 +27,7 @@ class CalculixStatus:
                 step = DynamicStep
             if step:
                 number = len(self.steps) + 1
-                self.steps.append(step(number))
+                self.steps.append(step(number, self.hauptfenster.update_solver_status))
 
         # relay the line to the corresponding step
         if self.steps:
@@ -35,5 +35,3 @@ class CalculixStatus:
         else:
             # parse the preamble
             pass
-
-        self.hauptfenster.update_solver_status()

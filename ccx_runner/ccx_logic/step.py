@@ -1,25 +1,42 @@
 import re
 from enum import StrEnum, auto
-from typing import Protocol
+from typing import Protocol, Callable
 
 from ccx_runner.ccx_logic.increment import Increment
 from ccx_runner.ccx_logic.iteration import Iteration
 
+
 class Step(Protocol):
     increments: list[Increment]
+    parsed_lines: list[str]
+
     @property
     def name(self) -> str: ...
-    def parse(self, line:str): ...
+    @property
+    def cur_increment(self) -> Increment: ...
+    @property
+    def cur_iteration(self) -> Iteration: ...
+    def parse(self, line: str): ...
+
 
 class StaticStep:
-    def __init__(self, number: int) -> None:
+    def __init__(self, number: int, update_call: Callable) -> None:
         self.number = number
         self.parsed_lines: list[str] = []
         self.increments: list[Increment] = []
+        self.update_call = update_call
 
     @property
     def name(self) -> str:
         return f"StaticStep {self.number}"
+
+    @property
+    def cur_increment(self):
+        return self.increments[-1]
+
+    @property
+    def cur_iteration(self):
+        return self.cur_increment.iterations[-1]
 
     def parse(self, line: str):
         # INCREMENT DATA
@@ -45,34 +62,46 @@ class StaticStep:
 
         # ITERATION DATA
         if line.startswith("iteration"):
+            self.update_call()
             number = int(line.partition(" ")[-1])
             if self.increments:
                 self.increments[-1].iterations.append(
                     Iteration(self.increments[-1], number)
                 )
 
-        # look for Iteration Residuals
-        if ("convergence" in line) or ("no convergence" in line):
-            iteration = self.increments[-1].iterations[-1]
-
-            for prev_line in self.parsed_lines[-2::-1]:
-                # gehe Rückwärts bis du eine leere Zeile findest
-                if len(prev_line.strip()) == 0:  # leere Zeile
-                    break  # out of for loop
-                else:
-                    name, _, wert = prev_line.partition("=")
-                    iteration.data[name] = float(wert.strip().partition(" ")[0])
+        # Residuals of the iteration
+        searchwords = (
+            "average force",
+            "time avg. forc",
+            "largest residual force",
+            "largest increment of disp",
+            "largest correction to disp",
+        )
+        for searchword in searchwords:
+            if line.startswith(searchword) and "=" in line:
+                value = float(line.split(" ")[-1])
+                self.cur_iteration.data[searchword] = value
 
         self.parsed_lines.append(line)
 
+
 class DynamicStep:
-    def __init__(self, number: int) -> None:
+    def __init__(self, number: int, update_call: Callable) -> None:
         self.number = number
         self.increments: list[Increment] = []
+        self.parsed_lines: list[str] = []
 
     @property
     def name(self) -> str:
         return f"DynamicStep {self.number}"
+
+    @property
+    def cur_increment(self):
+        return self.increments[-1]
+
+    @property
+    def cur_iteration(self):
+        return self.cur_increment.iterations[-1]
 
     def parse(self, line: str):
         pass
