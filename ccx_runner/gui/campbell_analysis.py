@@ -1,12 +1,7 @@
 import dearpygui.dearpygui as dpg
-import subprocess
-import os
-import shutil
-import time
 import threading
 from pathlib import Path
-import platformdirs
-import json
+import pandas as pd
 
 from typing import TYPE_CHECKING, Optional
 
@@ -19,6 +14,9 @@ from ccx_runner.ccx_logic.run_ccx import run_ccx
 class CampbellAnalysis:
     def __init__(self, hauptfenster: "Hauptfenster", tab_parent: int) -> None:
         self.hauptfenster = hauptfenster
+        self.project_instance_data = {}
+
+        self.results: dict[float, pd.DataFrame] = {}
 
         dpg.add_text(
             'This tab provides the tools to parametrize a "*COMPLEX FREQUENCY, CORIOLIS" step,'
@@ -36,6 +34,8 @@ class CampbellAnalysis:
 
         with dpg.group(horizontal=True, parent=tab_parent):
             dpg.add_button(label="Run Analysis", callback=self.run_campbell_analysis)
+
+        self.tab_bar = dpg.add_tab_bar(parent=tab_parent)
 
     def callback_project_selected(self):
         # get all available centrif definitions from the .inp file
@@ -73,13 +73,13 @@ class CampbellAnalysis:
 
         ### HANDLE OUTPUT DIRECTORY ###
         if dpg.get_value(self.output_dir_input) == "":
-            output_pfad = self.hauptfenster.job_dir / "campbell_analysis"
+            self.output_pfad = self.hauptfenster.job_dir / "campbell_analysis"
         else:
-            output_pfad = Path(dpg.get_value(self.output_dir_input))
+            self.output_pfad = Path(dpg.get_value(self.output_dir_input))
 
-        if output_pfad.exists():
+        if self.output_pfad.exists():
             # TODO safe version to clear data inside the directory
-            if len(tuple(output_pfad.iterdir())) > 0:
+            if len(tuple(self.output_pfad.iterdir())) > 0:
                 return
             # for item in output_pfad.iterdir():
             #     if item.is_file():
@@ -88,7 +88,7 @@ class CampbellAnalysis:
             #         shutil.rmtree(item)
         else:
             # create output directory
-            output_pfad.mkdir()
+            self.output_pfad.mkdir()
 
         ### READ JOB DATA FROM .inp FILE
         with open(
@@ -108,11 +108,11 @@ class CampbellAnalysis:
             line_number is not None
         ), "For some reason, the specified centrif value was not found inside the .inp file."
 
-        project_files: list[tuple[str, float, Path]] = []
+        self.project_files: list[tuple[str, float, Path]] = []
         # Setup a project directory for every speed step
         for i, speed in enumerate(speeds):
             name = f"simstep_{speed}_{i}"
-            project_dir = output_pfad / name
+            project_dir = self.output_pfad / name
             project_dir.mkdir()
             filepath = project_dir / (name + ".inp")
 
@@ -124,10 +124,19 @@ class CampbellAnalysis:
 
             with open(filepath, "w") as inp_file:
                 inp_file.writelines(modified_project_file)
-            project_files.append((name, speed, project_dir))
+            self.project_files.append((name, speed, project_dir))
 
         # run the analysis for every subproject
-        for name, speed, project_dir in project_files:
+        dpg.delete_item(self.tab_bar, children_only=True)
+        self.project_instance_data = {}
+        for name, speed, project_dir in self.project_files:
+            self.project_instance_data[name] = {}
+            with dpg.tab(label=str(speed), parent=self.tab_bar):
+                self.project_instance_data[name]["textbox"] = dpg.add_input_text(
+                    readonly=True, multiline=True, width=-1, height=-1
+                )
+                self.project_instance_data[name]["finished"] = False
+
             thread = threading.Thread(
                 target=run_ccx,
                 daemon=True,
@@ -135,10 +144,66 @@ class CampbellAnalysis:
                     "ccx_path": self.hauptfenster.ccx_path,
                     "job_dir": project_dir,
                     "job_name": name,
-                    "console_out": None,
+                    "console_out": self.console_out,
                     "parser": None,
-                    "finished": None,
-                    "identifier":name
+                    "finished": self.mark_as_finished,
+                    "identifier": name,
                 },
             )
             thread.start()
+
+    def console_out(self, line: str, identifier: Optional[str]):
+        textbox = self.project_instance_data[identifier]["textbox"]
+        dpg.set_value(textbox, dpg.get_value(textbox) + line)
+
+    def mark_as_finished(self, identifier: Optional[str]):
+        self.project_instance_data[identifier]["finished"] = True
+        if all(
+            self.project_instance_data[ident]["finished"]
+            for ident in self.project_instance_data.keys()
+        ):
+            self.all_thread_complete()
+
+    def all_thread_complete(self):
+        self.results = {}
+        # Collect all the Modal Analysis result files
+        for name, speed, project_dir in self.project_files:
+            with open(project_dir / (name + ".dat"), "r") as result_file:
+                result_file_contents = result_file.read()
+            parser = ComplexModalParser(result_file_contents)
+            self.results[speed] = parser.data
+            parser.data.to_csv(self.output_pfad / (f"{speed}.csv"), index=False)
+
+
+class ComplexModalParser:
+    def __init__(self, file_contents: str) -> None:
+        self.file_contents = file_contents
+        self._data = []
+        self.parse()
+
+    @property
+    def data(self):
+        return pd.DataFrame(
+            self._data, columns=["MODE NO", "REAL [RAD/TIME]", "IMAG [RAD/TIME]"]
+        )
+
+    def parse(self):
+        lines = self.file_contents.splitlines()
+        counter = 0
+        startzeile: Optional[int] = None
+        for nr, line in enumerate(lines):
+            if "E I G E N V A L U E   O U T P U T" in line:
+                counter += 1
+                if counter == 2:
+                    startzeile = nr + 6
+
+        if startzeile is None:
+            raise ValueError("Es wurde kein COMPLEX FREQUENCY output gefunden!")
+        else:
+            curline = startzeile
+            while len(lines[curline].strip()) > 0:
+                mode_no, real_rad, real_cycl, imag_rad = (
+                    data.strip() for data in lines[curline].strip().split("  ")
+                )
+                self._data.append((int(mode_no), float(real_rad), float(imag_rad)))
+                curline += 1
