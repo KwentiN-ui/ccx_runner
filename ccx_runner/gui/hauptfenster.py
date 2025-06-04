@@ -6,6 +6,7 @@ import threading
 from pathlib import Path
 import platformdirs
 import json
+from typing import Optional
 
 from ccx_runner.ccx_logic.status import CalculixStatus
 from ccx_runner.gui.campbell_analysis import CampbellAnalysis
@@ -172,7 +173,7 @@ class Hauptfenster:
         self._plotted_keys = []
         dpg.delete_item(self.plot_y_axis, children_only=True)
 
-    def add_console_text(self, text: str):
+    def add_console_text(self, text: str, *args):
         self._console_out.append(text)
         self.update_console_output()
 
@@ -191,7 +192,7 @@ class Hauptfenster:
             items=items,
         )
 
-    def reset_after_process(self):
+    def reset_after_process(self, identifier:Optional[str]=None):
         dpg.hide_item(self.kill_job_btn)
         dpg.show_item(self.start_job_btn)
         self.process = None
@@ -237,7 +238,8 @@ class Hauptfenster:
             "job_name": self.job_name,
             "console_out": self.add_console_text,
             "parser": self.status.parse,
-            "finished": self.reset_after_process()
+            "finished": self.reset_after_process,
+            "identifier": "main thread"
         })
         self.thread.start()
 

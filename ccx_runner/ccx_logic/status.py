@@ -3,7 +3,7 @@ from ccx_runner.ccx_logic.static.StaticStep import StaticStep
 from ccx_runner.ccx_logic.step import Step, DynamicStep
 from ccx_runner.ccx_logic.static.increment import Increment
 from ccx_runner.ccx_logic.static.iteration import Iteration
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from ccx_runner.gui.hauptfenster import Hauptfenster
@@ -15,7 +15,7 @@ class CalculixStatus:
         self.running = False
         self.steps: list[Step] = []
 
-    def parse(self, line: str):
+    def parse(self, line: str, identifier:Optional[str]=None):
         line = line.strip()
 
         # check if a new STEP was found first
