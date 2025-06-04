@@ -8,7 +8,8 @@ import platformdirs
 import json
 
 from ccx_runner.ccx_logic.status import CalculixStatus
-
+from ccx_runner.gui.campbell_analysis import CampbellAnalysis
+from ccx_runner.ccx_logic.run_ccx import run_ccx
 
 class Hauptfenster:
     def __init__(self) -> None:
@@ -19,9 +20,15 @@ class Hauptfenster:
         # SETUP GUI
         with dpg.window(label="Example Window") as self.id:
             self.ccx_name_inp = dpg.add_input_text(label="Solver Pfad")
-            self.job_directory_inp = dpg.add_input_text(label="Job Directory")
+            self.job_directory_inp = dpg.add_input_text(
+                label="Job Directory",
+                callback=self.callback_project_directory_changed,
+                tracked=True,
+            )
             with dpg.group(horizontal=True):
-                self.job_name_inp = dpg.add_combo()
+                self.job_name_inp = dpg.add_combo(
+                    callback=self.callback_project_selected
+                )
                 dpg.add_button(label="refresh", callback=self.update_available_jobs)
 
             with dpg.group(horizontal=True):
@@ -62,17 +69,23 @@ class Hauptfenster:
                     )
                     self.table = dpg.add_table(height=-1)
 
+                with dpg.tab(label="Complex Frequency Analysis") as tab_id:
+                    self.cambell_analysis = CampbellAnalysis(self, tab_id)
+
         self.path_manager = ConfigManager("ccx_runner")
         last_known_paths = self.path_manager.load_paths()
-        dpg.configure_item(
-            self.ccx_name_inp, default_value=last_known_paths.get("ccx_name", "")
-        )
-        dpg.configure_item(
-            self.job_directory_inp, default_value=last_known_paths.get("job_dir", "")
-        )
+        dpg.set_value(self.ccx_name_inp, last_known_paths.get("ccx_name", ""))
+        dpg.set_value(self.job_directory_inp, last_known_paths.get("job_dir", ""))
+        self.callback_project_directory_changed()
 
         self.update_available_jobs()
         self.process = None
+
+    def callback_project_selected(self):
+        self.cambell_analysis.callback_project_selected()
+
+    def callback_project_directory_changed(self):
+        self.cambell_analysis.callback_project_directory_changed()
 
     def update_table_data(self):
         step = self.selected_step
@@ -122,7 +135,10 @@ class Hauptfenster:
         return Path(dpg.get_value(self.job_directory_inp))
 
     @property
-    def job_name(self):
+    def job_name(self) -> str:
+        """
+        Job name without a file ending.
+        """
         return dpg.get_value(self.job_name_inp)
 
     def update_solver_status(self):
@@ -175,10 +191,22 @@ class Hauptfenster:
             items=items,
         )
 
-    def run_ccx(self):
-        """
-        Runs the calculix subprocess and monitors its outputs.
-        """
+    def reset_after_process(self):
+        dpg.hide_item(self.kill_job_btn)
+        dpg.show_item(self.start_job_btn)
+        self.process = None
+        self.status.running = False
+
+    def start_job(self):
+        if self.process is not None:  # Prevent starting multiple jobs
+            return
+
+        self.reset_residual_plot()
+        dpg.show_item(self.kill_job_btn)
+        dpg.hide_item(self.start_job_btn)
+        dpg.set_value(self.console_out, "")
+        self._console_out.clear()
+
         # Check if paths are valid
         if not self.ccx_path.is_file():
             self.add_console_text(
@@ -203,51 +231,14 @@ class Hauptfenster:
         dpg.show_item(self.timer)
         self.status.running = True
 
-        self.process = subprocess.Popen(
-            [f"{self.ccx_path.resolve()}", f"{self.job_name}"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            cwd=self.job_dir.resolve(),
-        )
-
-        try:
-            while self.process.poll() is None:
-                if self.process.stdout:
-                    for line in self.process.stdout:
-                        self.add_console_text(line)
-                        self.status.parse(line)
-
-                if self.process.stderr:
-                    for line in self.process.stderr:
-                        self.add_console_text(line)
-        except AttributeError:
-            pass
-
-        return_code = self.process.returncode if self.process else 0
-        if return_code != 0:
-            self.add_console_text(f"ccx exited with error code: {return_code}")
-
-        self.reset_after_process()
-
-    def reset_after_process(self):
-        dpg.hide_item(self.kill_job_btn)
-        dpg.show_item(self.start_job_btn)
-        self.process = None
-        self.status.running = False
-
-    def start_job(self):
-        if self.process is not None:  # Prevent starting multiple jobs
-            return
-
-        self.reset_residual_plot()
-        dpg.show_item(self.kill_job_btn)
-        dpg.hide_item(self.start_job_btn)
-        dpg.set_value(self.console_out, "")
-        self._console_out.clear()
-
-        self.thread = threading.Thread(target=self.run_ccx, daemon=True)
+        self.thread = threading.Thread(target=run_ccx, daemon=True, kwargs= {
+            "ccx_path": self.ccx_path,
+            "job_dir": self.job_dir,
+            "job_name": self.job_name,
+            "console_out": self.add_console_text,
+            "parser": self.status.parse,
+            "finished": self.reset_after_process()
+        })
         self.thread.start()
 
     def kill_job(self):
