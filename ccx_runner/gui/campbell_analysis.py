@@ -17,6 +17,7 @@ class CampbellAnalysis:
     def __init__(self, hauptfenster: "Hauptfenster", tab_parent: int) -> None:
         self.hauptfenster = hauptfenster
         self.project_instance_data = {}
+        self.plot_window = CampbellPlot(self)
 
         self.results: dict[float, dict[int, tuple[float, float]]] = {}
 
@@ -36,6 +37,9 @@ class CampbellAnalysis:
 
         with dpg.group(horizontal=True, parent=tab_parent):
             dpg.add_button(label="Run Analysis", callback=self.run_campbell_analysis)
+            self.plot_button = dpg.add_button(
+                label="Show Plot", show=False, callback=self.plot_window.show
+            )
 
         self.tab_bar = dpg.add_tab_bar(parent=tab_parent)
 
@@ -67,13 +71,13 @@ class CampbellAnalysis:
     @property
     def modal_data(self) -> dict[int, dict[str, list[float]]]:
         mod_data = collections.defaultdict(
-            lambda: {"speed": [], "magnitude": [], "real": [], "imag": []}
+            lambda: {"speed": [], "freq": [], "real": [], "imag": []}
         )
 
         for speed, modes in self.results.items():
             for mode_nr, (real, imag) in modes.items():
-                mod_data[mode_nr]["speed"].append(speed)
-                mod_data[mode_nr]["magnitude"].append(abs(real + 1j * imag))
+                mod_data[mode_nr]["speed"].append(speed / (2 * np.pi))
+                mod_data[mode_nr]["freq"].append(abs(real / (2 * np.pi)))
                 mod_data[mode_nr]["real"].append(real)
                 mod_data[mode_nr]["imag"].append(imag)
 
@@ -82,7 +86,7 @@ class CampbellAnalysis:
             # Alle vier Listen koppeln
             paired_data = zip(
                 mod_data[mode_nr]["speed"],
-                mod_data[mode_nr]["magnitude"],
+                mod_data[mode_nr]["freq"],
                 mod_data[mode_nr]["real"],
                 mod_data[mode_nr]["imag"],
             )
@@ -98,7 +102,7 @@ class CampbellAnalysis:
 
             # Dictionary mit den sortierten Listen aktualisieren
             mod_data[mode_nr]["speed"] = list(s_sort)
-            mod_data[mode_nr]["magnitude"] = list(m_sort)
+            mod_data[mode_nr]["freq"] = list(m_sort)
             mod_data[mode_nr]["real"] = list(r_sort)
             mod_data[mode_nr]["imag"] = list(i_sort)
 
@@ -112,7 +116,7 @@ class CampbellAnalysis:
         speeds = self.speeds
         if speeds is None:
             return
-
+        dpg.hide_item(self.plot_button)
         ### HANDLE OUTPUT DIRECTORY ###
         if dpg.get_value(self.output_dir_input) == "":
             self.output_pfad = self.hauptfenster.job_dir / "campbell_analysis"
@@ -212,24 +216,53 @@ class CampbellAnalysis:
         for name, speed, project_dir in self.project_files:
             with open(project_dir / (name + ".dat"), "r") as result_file:
                 result_file_contents = result_file.read()
-            parser = ComplexModalParser(result_file_contents)
-            self.results[speed] = parser.data
+            parser = ComplexModalParseResult(result_file_contents, speed)
+            self.results[speed] = parser.eigenvalue_output
+        dpg.show_item(self.plot_button)
 
-        print(self.results)
+
+class CampbellPlot:
+    def __init__(self, analysis: CampbellAnalysis) -> None:
+        self.analysis = analysis
+        with dpg.window(show=False) as self.window_id:
+            with dpg.plot(width=-1, height=-1):
+                dpg.add_plot_axis(dpg.mvXAxis, label="revolution speed [Hz]")
+                self.plot_axis = dpg.add_plot_axis(
+                    dpg.mvYAxis, label="Eigenfrequency [Hz]"
+                )
+
+    def show(self):
+        dpg.show_item(self.window_id)
+        dpg.delete_item(self.plot_axis, children_only=True)
+        for mode, daten in enumerate(self.analysis.modal_data.values()):
+            print(mode)
+            speed, real, imag, freq = (
+                np.array(daten["speed"]),
+                np.array(daten["real"]),
+                np.array(daten["imag"]),
+                np.array(daten["freq"]),
+            )
+            dpg.add_line_series(tuple(speed), tuple(freq), parent=self.plot_axis)
+        if self.analysis.speeds:
+            max_speed = max(self.analysis.speeds) / (2*np.pi)
+            for i in range(3):
+                dpg.add_line_series([0, max_speed], [0, (i + 1) * max_speed], parent=self.plot_axis)
 
 
-class ComplexModalParser:
-    def __init__(self, file_contents: str) -> None:
+class ComplexModalParseResult:
+    def __init__(self, file_contents: str, speed: float) -> None:
+        self.speed = speed
         self.file_contents = file_contents
-        self._data: dict[int, tuple[float, float]] = {}
+        self._eigenvalue_output: dict[int, tuple[float, float]] = {}
+        self._modal_assurance_matrix: np.ndarray
         self.parse()
 
     @property
-    def data(self) -> dict[int, tuple[float, float]]:
+    def eigenvalue_output(self) -> dict[int, tuple[float, float]]:
         """
         Dictionary that stores the Modal Data for a specific speed as `{modenr:(real[rad/time],complex[rad/time])}`
         """
-        return self._data
+        return self._eigenvalue_output
 
     def parse(self):
         lines = self.file_contents.splitlines()
@@ -251,6 +284,5 @@ class ComplexModalParser:
                 )
                 real = float(real_rad)
                 imag = float(imag_rad)
-                if abs(real) > 1e-5: # filter freq too close to zero
-                    self._data[int(mode_no)] = (real, imag)
+                self._eigenvalue_output[int(mode_no)] = (real, imag)
                 curline += 1
