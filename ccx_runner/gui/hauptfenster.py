@@ -249,7 +249,7 @@ class Hauptfenster:
             target=run_ccx,
             daemon=True,
             kwargs={
-                "process": self.process,
+                "process_holder": self,
                 "ccx_path": self.ccx_path,
                 "job_dir": self.job_dir,
                 "job_name": self.job_name,

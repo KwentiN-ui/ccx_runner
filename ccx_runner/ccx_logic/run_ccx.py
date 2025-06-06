@@ -14,7 +14,7 @@ def run_ccx(
     ccx_path: Path,
     job_dir: Path,
     job_name: str,
-    process: Optional[subprocess.Popen[str]] = None,
+    process_holder: Optional[object] = None,
     console_out: Optional[Callable] = None,
     parser: Optional[Callable] = None,
     finished: Optional[Callable] = None,
@@ -33,7 +33,8 @@ def run_ccx(
         bufsize=1,
         cwd=job_dir.resolve(),
     )
-
+    if process_holder:
+        process_holder.process = process # type: ignore
     try:
         while process.poll() is None:
             if process.stdout:
