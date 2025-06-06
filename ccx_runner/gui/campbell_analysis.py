@@ -1,7 +1,9 @@
 import dearpygui.dearpygui as dpg
 import threading
 from pathlib import Path
-import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+import collections
 
 from typing import TYPE_CHECKING, Optional
 
@@ -16,7 +18,7 @@ class CampbellAnalysis:
         self.hauptfenster = hauptfenster
         self.project_instance_data = {}
 
-        self.results: dict[float, pd.DataFrame] = {}
+        self.results: dict[float, dict[int, tuple[float, float]]] = {}
 
         dpg.add_text(
             'This tab provides the tools to parametrize a "*COMPLEX FREQUENCY, CORIOLIS" step,'
@@ -62,6 +64,46 @@ class CampbellAnalysis:
         if speeds_inp:
             return [float(speed) for speed in speeds_inp.split(",")]
 
+    @property
+    def modal_data(self) -> dict[int, dict[str, list[float]]]:
+        mod_data = collections.defaultdict(
+            lambda: {"speed": [], "magnitude": [], "real": [], "imag": []}
+        )
+
+        for speed, modes in self.results.items():
+            for mode_nr, (real, imag) in modes.items():
+                mod_data[mode_nr]["speed"].append(speed)
+                mod_data[mode_nr]["magnitude"].append(abs(real + 1j * imag))
+                mod_data[mode_nr]["real"].append(real)
+                mod_data[mode_nr]["imag"].append(imag)
+
+        # 3. Sortierschritt anpassen, um alle vier Listen zu synchronisieren
+        for mode_nr in mod_data:
+            # Alle vier Listen koppeln
+            paired_data = zip(
+                mod_data[mode_nr]["speed"],
+                mod_data[mode_nr]["magnitude"],
+                mod_data[mode_nr]["real"],
+                mod_data[mode_nr]["imag"],
+            )
+
+            # Nach Geschwindigkeit sortieren
+            sorted_pairs = sorted(paired_data)
+
+            # Gekoppelte Daten wieder in die vier Listen trennen
+            if sorted_pairs:
+                s_sort, m_sort, r_sort, i_sort = zip(*sorted_pairs)
+            else:
+                s_sort, m_sort, r_sort, i_sort = [], [], [], []
+
+            # Dictionary mit den sortierten Listen aktualisieren
+            mod_data[mode_nr]["speed"] = list(s_sort)
+            mod_data[mode_nr]["magnitude"] = list(m_sort)
+            mod_data[mode_nr]["real"] = list(r_sort)
+            mod_data[mode_nr]["imag"] = list(i_sort)
+
+        return mod_data
+
     def run_campbell_analysis(self):
         ### CHECKS BEFORE STARTING
         boundary_name = dpg.get_value(self.centrif_load_name)
@@ -78,7 +120,7 @@ class CampbellAnalysis:
             self.output_pfad = Path(dpg.get_value(self.output_dir_input))
 
         if self.output_pfad.exists():
-            # TODO safe version to clear data inside the directory
+            # TODO change to a tmp dir
             if len(tuple(self.output_pfad.iterdir())) > 0:
                 return
             # for item in output_pfad.iterdir():
@@ -172,20 +214,22 @@ class CampbellAnalysis:
                 result_file_contents = result_file.read()
             parser = ComplexModalParser(result_file_contents)
             self.results[speed] = parser.data
-            parser.data.to_csv(self.output_pfad / (f"{speed}.csv"), index=False)
+
+        print(self.results)
 
 
 class ComplexModalParser:
     def __init__(self, file_contents: str) -> None:
         self.file_contents = file_contents
-        self._data = []
+        self._data: dict[int, tuple[float, float]] = {}
         self.parse()
 
     @property
-    def data(self):
-        return pd.DataFrame(
-            self._data, columns=["MODE NO", "REAL [RAD/TIME]", "IMAG [RAD/TIME]"]
-        )
+    def data(self) -> dict[int, tuple[float, float]]:
+        """
+        Dictionary that stores the Modal Data for a specific speed as `{modenr:(real[rad/time],complex[rad/time])}`
+        """
+        return self._data
 
     def parse(self):
         lines = self.file_contents.splitlines()
@@ -205,5 +249,8 @@ class ComplexModalParser:
                 mode_no, real_rad, real_cycl, imag_rad = (
                     data.strip() for data in lines[curline].strip().split("  ")
                 )
-                self._data.append((int(mode_no), float(real_rad), float(imag_rad)))
+                real = float(real_rad)
+                imag = float(imag_rad)
+                if abs(real) > 1e-5: # filter freq too close to zero
+                    self._data[int(mode_no)] = (real, imag)
                 curline += 1

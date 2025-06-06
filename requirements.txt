@@ -1,4 +1,0 @@
-dearpygui
-platformdirs
-pyinstaller
-setuptools
