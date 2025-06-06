@@ -1,9 +1,9 @@
 import dearpygui.dearpygui as dpg
 import threading
 from pathlib import Path
-import matplotlib.pyplot as plt
 import numpy as np
 import collections
+import tempfile
 
 from typing import TYPE_CHECKING, Optional
 
@@ -33,7 +33,6 @@ class CampbellAnalysis:
         self.speeds_input = dpg.add_input_text(
             label="List of speeds [rad/time]", hint="50,150,300,500.5"
         )
-        self.output_dir_input = dpg.add_input_text(label="output directory")
 
         with dpg.group(horizontal=True, parent=tab_parent):
             dpg.add_button(label="Run Analysis", callback=self.run_campbell_analysis)
@@ -56,11 +55,6 @@ class CampbellAnalysis:
         dpg.configure_item(self.centrif_load_name, items=centrif_definitions)
         if len(centrif_definitions) > 0:
             dpg.set_value(self.centrif_load_name, centrif_definitions[0])
-
-    def callback_project_directory_changed(self):
-        dpg.configure_item(
-            self.output_dir_input, hint=self.hauptfenster.job_dir / "campbell_analysis"
-        )
 
     @property
     def speeds(self):
@@ -118,23 +112,11 @@ class CampbellAnalysis:
             return
         dpg.hide_item(self.plot_button)
         ### HANDLE OUTPUT DIRECTORY ###
-        if dpg.get_value(self.output_dir_input) == "":
-            self.output_pfad = self.hauptfenster.job_dir / "campbell_analysis"
-        else:
-            self.output_pfad = Path(dpg.get_value(self.output_dir_input))
 
-        if self.output_pfad.exists():
-            # TODO change to a tmp dir
-            if len(tuple(self.output_pfad.iterdir())) > 0:
-                return
-            # for item in output_pfad.iterdir():
-            #     if item.is_file():
-            #         item.unlink()
-            #     elif item.is_dir():
-            #         shutil.rmtree(item)
-        else:
-            # create output directory
-            self.output_pfad.mkdir()
+        self.tempdir = tempfile.TemporaryDirectory(
+            "ccx_complex_freq_analysis", delete=False
+        )
+        temp_pfad = Path(self.tempdir.name)
 
         ### READ JOB DATA FROM .inp FILE
         with open(
@@ -158,7 +140,7 @@ class CampbellAnalysis:
         # Setup a project directory for every speed step
         for i, speed in enumerate(speeds):
             name = f"simstep_{speed}_{i}"
-            project_dir = self.output_pfad / name
+            project_dir = temp_pfad / name
             project_dir.mkdir()
             filepath = project_dir / (name + ".inp")
 
@@ -219,6 +201,7 @@ class CampbellAnalysis:
             parser = ComplexModalParseResult(result_file_contents, speed)
             self.results[speed] = parser.eigenvalue_output
         dpg.show_item(self.plot_button)
+        self.tempdir.cleanup()
 
 
 class CampbellPlot:
@@ -235,7 +218,6 @@ class CampbellPlot:
         dpg.show_item(self.window_id)
         dpg.delete_item(self.plot_axis, children_only=True)
         for mode, daten in enumerate(self.analysis.modal_data.values()):
-            print(mode)
             speed, real, imag, freq = (
                 np.array(daten["speed"]),
                 np.array(daten["real"]),
@@ -244,9 +226,11 @@ class CampbellPlot:
             )
             dpg.add_line_series(tuple(speed), tuple(freq), parent=self.plot_axis)
         if self.analysis.speeds:
-            max_speed = max(self.analysis.speeds) / (2*np.pi)
+            max_speed = max(self.analysis.speeds) / (2 * np.pi)
             for i in range(3):
-                dpg.add_line_series([0, max_speed], [0, (i + 1) * max_speed], parent=self.plot_axis)
+                dpg.add_line_series(
+                    [0, max_speed], [0, (i + 1) * max_speed], parent=self.plot_axis
+                )
 
 
 class ComplexModalParseResult:

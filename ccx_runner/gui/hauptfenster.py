@@ -1,5 +1,4 @@
 import dearpygui.dearpygui as dpg
-import subprocess
 import os
 import time
 import threading
@@ -86,7 +85,7 @@ class Hauptfenster:
         self.cambell_analysis.callback_project_selected()
 
     def callback_project_directory_changed(self):
-        self.cambell_analysis.callback_project_directory_changed()
+        pass
 
     def update_table_data(self):
         step = self.selected_step
