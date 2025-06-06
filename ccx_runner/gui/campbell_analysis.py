@@ -21,18 +21,51 @@ class CampbellAnalysis:
 
         self.results: dict[float, dict[int, tuple[float, float]]] = {}
 
+        self.speeds_tool: list[int] = []  # n, from, to
+
         dpg.add_text(
             'This tab provides the tools to parametrize a "*COMPLEX FREQUENCY, CORIOLIS" step,'
             " by running the analysis multiple times with different speeds. The complex frequency step gets automatically inserted if missing, but a standard frequency step is mandatory.",
-            wrap=500,
+            wrap=800,
             parent=tab_parent,
         )
         self.centrif_load_name = dpg.add_combo(
             label="Centrifugal load", parent=tab_parent
         )
         self.speeds_input = dpg.add_input_text(
-            label="List of speeds [rad/time]", hint="50,150,300,500.5"
+            label="List of speeds [rpm]", hint="50,150,300,500.5"
         )
+        with dpg.group(horizontal=True):
+            dpg.add_text("Add")
+            self.speeds_tool.append(
+                dpg.add_input_int(
+                    default_value=5,
+                    width=100,
+                    min_value=2,
+                    min_clamped=True,
+                    callback=self.callback_step_tool_triggered,
+                )  # type: ignore
+            )
+            dpg.add_text("Steps between")
+            self.speeds_tool.append(
+                dpg.add_input_float(
+                    default_value=0,
+                    width=100,
+                    min_value=0,
+                    min_clamped=True,
+                    callback=self.callback_step_tool_triggered,
+                )  # type: ignore
+            )
+            dpg.add_text("and")
+            self.speeds_tool.append(
+                dpg.add_input_float(
+                    default_value=500,
+                    width=100,
+                    min_value=0,
+                    min_clamped=True,
+                    callback=self.callback_step_tool_triggered,
+                )  # type: ignore
+            )
 
         with dpg.group(horizontal=True, parent=tab_parent):
             dpg.add_button(label="Run Analysis", callback=self.run_campbell_analysis)
@@ -48,6 +81,13 @@ class CampbellAnalysis:
             )
 
         self.tab_bar = dpg.add_tab_bar(parent=tab_parent)
+
+    def callback_step_tool_triggered(self):
+        n, start, end = dpg.get_values(self.speeds_tool)
+        dpg.set_value(
+            self.speeds_input,
+            ", ".join(str(round(num, 3)) for num in np.linspace(start, end, n)),
+        )
 
     def callback_project_selected(self):
         # get all available centrif definitions from the .inp file
@@ -114,20 +154,24 @@ class CampbellAnalysis:
 
     @property
     def speeds(self):
+        """
+        Returns the user specified speeds to compute in [rad/s]
+        """
         speeds_inp: str = dpg.get_value(self.speeds_input)
         if speeds_inp:
-            return [float(speed) for speed in speeds_inp.split(",")]
+            # convert from rpm to rad/s
+            return [rpm_to_rad_s(float(speed)) for speed in speeds_inp.split(",")]
 
     @property
     def modal_data(self) -> dict[int, dict[str, list[float]]]:
         mod_data = collections.defaultdict(
-            lambda: {"speed": [], "freq": [], "real": [], "imag": []}
+            lambda: {"speed rad/s": [], "freq hz": [], "real": [], "imag": []}
         )
 
         for speed, modes in self.results.items():
             for mode_nr, (real, imag) in modes.items():
-                mod_data[mode_nr]["speed"].append(speed / (2 * np.pi))
-                mod_data[mode_nr]["freq"].append(abs(real / (2 * np.pi)))
+                mod_data[mode_nr]["speed rad/s"].append(speed)
+                mod_data[mode_nr]["freq hz"].append(abs(real / (2 * np.pi)))
                 mod_data[mode_nr]["real"].append(real)
                 mod_data[mode_nr]["imag"].append(imag)
 
@@ -135,8 +179,8 @@ class CampbellAnalysis:
         for mode_nr in mod_data:
             # Alle vier Listen koppeln
             paired_data = zip(
-                mod_data[mode_nr]["speed"],
-                mod_data[mode_nr]["freq"],
+                mod_data[mode_nr]["speed rad/s"],
+                mod_data[mode_nr]["freq hz"],
                 mod_data[mode_nr]["real"],
                 mod_data[mode_nr]["imag"],
             )
@@ -151,8 +195,8 @@ class CampbellAnalysis:
                 s_sort, m_sort, r_sort, i_sort = [], [], [], []
 
             # Dictionary mit den sortierten Listen aktualisieren
-            mod_data[mode_nr]["speed"] = list(s_sort)
-            mod_data[mode_nr]["freq"] = list(m_sort)
+            mod_data[mode_nr]["speed rad/s"] = list(s_sort)
+            mod_data[mode_nr]["freq hz"] = list(m_sort)
             mod_data[mode_nr]["real"] = list(r_sort)
             mod_data[mode_nr]["imag"] = list(i_sort)
 
@@ -216,7 +260,7 @@ class CampbellAnalysis:
         self.project_instance_data = {}
         for name, speed, project_dir in self.project_files:
             self.project_instance_data[name] = {}
-            with dpg.tab(label=str(speed), parent=self.tab_bar):
+            with dpg.tab(label=str(round(rad_s_to_rpm(speed), 3)), parent=self.tab_bar):
                 self.project_instance_data[name]["textbox"] = dpg.add_input_text(
                     readonly=True, multiline=True, width=-1, height=-1
                 )
@@ -267,7 +311,7 @@ class CampbellPlot:
         self.analysis = analysis
         with dpg.window(show=False) as self.window_id:
             with dpg.plot(width=-1, height=-1):
-                dpg.add_plot_axis(dpg.mvXAxis, label="revolution speed [Hz]")
+                dpg.add_plot_axis(dpg.mvXAxis, label="revolution speed [rpm]")
                 self.plot_axis = dpg.add_plot_axis(
                     dpg.mvYAxis, label="Eigenfrequency [Hz]"
                 )
@@ -277,14 +321,14 @@ class CampbellPlot:
         dpg.delete_item(self.plot_axis, children_only=True)
         for mode, daten in enumerate(self.analysis.modal_data.values()):
             speed, real, imag, freq = (
-                np.array(daten["speed"]),
+                rad_s_to_rpm_array(np.array(daten["speed rad/s"])),
                 np.array(daten["real"]),
                 np.array(daten["imag"]),
-                np.array(daten["freq"]),
+                np.array(daten["freq hz"]),
             )
             dpg.add_line_series(tuple(speed), tuple(freq), parent=self.plot_axis)
         if self.analysis.speeds:
-            max_speed = max(self.analysis.speeds) / (2 * np.pi)
+            max_speed = rad_s_to_rpm(max(self.analysis.speeds))
             for i in range(3):
                 dpg.add_line_series(
                     [0, max_speed], [0, (i + 1) * max_speed], parent=self.plot_axis
@@ -328,3 +372,19 @@ class ComplexModalParseResult:
                 imag = float(imag_rad)
                 self._eigenvalue_output[int(mode_no)] = (real, imag)
                 curline += 1
+
+
+def rad_s_to_rpm(hz: float) -> float:
+    return hz * 9.5492966
+
+
+def rpm_to_rad_s(rpm: float) -> float:
+    return rpm * 0.1047198
+
+
+def rad_s_to_rpm_array(hz: np.ndarray) -> np.ndarray:
+    return rad_s_to_rpm(hz)  # type: ignore
+
+
+def rpm_to_rad_s_array(rpm: np.ndarray) -> np.ndarray:
+    return rpm_to_rad_s(rpm)  # type: ignore

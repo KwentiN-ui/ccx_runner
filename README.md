@@ -20,6 +20,8 @@ pipx install git+https://github.com/KwentiN-ui/ccx_runner.git
 4. The binary executable should appear in `./dist`
 
 ## Todo
+- General
+    - [ ] Handle Unit Conversions
 - Solution Monitor
     - [x] Static Analysis parsing
     - [ ] Frequency Anlysis parsing
