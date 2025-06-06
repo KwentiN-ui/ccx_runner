@@ -23,7 +23,7 @@ class CampbellAnalysis:
 
         dpg.add_text(
             'This tab provides the tools to parametrize a "*COMPLEX FREQUENCY, CORIOLIS" step,'
-            " by running the analysis multiple times with different speeds.",
+            " by running the analysis multiple times with different speeds. The complex frequency step gets automatically inserted if missing, but a standard frequency step is mandatory.",
             wrap=500,
             parent=tab_parent,
         )
@@ -38,6 +38,13 @@ class CampbellAnalysis:
             dpg.add_button(label="Run Analysis", callback=self.run_campbell_analysis)
             self.plot_button = dpg.add_button(
                 label="Show Plot", show=False, callback=self.plot_window.show
+            )
+            self.number_of_threads_input = dpg.add_input_int(
+                default_value=3,
+                label="Number of threads",
+                width=100,
+                min_value=1,
+                min_clamped=True,
             )
 
         self.tab_bar = dpg.add_tab_bar(parent=tab_parent)
@@ -151,6 +158,10 @@ class CampbellAnalysis:
 
         return mod_data
 
+    def run_cxx_limited_concurrency(self, **kwargs):
+        with self.thread_pool:
+            run_ccx(**kwargs)
+
     def run_campbell_analysis(self):
         ### CHECKS BEFORE STARTING
         boundary_name = dpg.get_value(self.centrif_load_name)
@@ -161,7 +172,8 @@ class CampbellAnalysis:
             return
         dpg.hide_item(self.plot_button)
         ### HANDLE OUTPUT DIRECTORY ###
-
+        n_threads = dpg.get_value(self.number_of_threads_input)
+        self.thread_pool = threading.Semaphore(n_threads)
         self.tempdir = tempfile.TemporaryDirectory(
             "ccx_complex_freq_analysis", delete=False
         )
@@ -208,10 +220,11 @@ class CampbellAnalysis:
                 self.project_instance_data[name]["textbox"] = dpg.add_input_text(
                     readonly=True, multiline=True, width=-1, height=-1
                 )
+                self.project_instance_data[name]["running"] = False
                 self.project_instance_data[name]["finished"] = False
 
             thread = threading.Thread(
-                target=run_ccx,
+                target=self.run_cxx_limited_concurrency,
                 daemon=True,
                 kwargs={
                     "ccx_path": self.hauptfenster.ccx_path,
