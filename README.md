@@ -22,7 +22,8 @@ pipx install git+https://github.com/KwentiN-ui/ccx_runner.git
     - [x] Static Analysis parsing
     - [ ] Frequency Anlysis parsing
     - [x] Dynamic Analysis parsing
+    - [ ] stop a running analysis inside a different thread
 - Complex Analysis
-    - [ ] Automatically insert `*COMPLEX FREQUENCY, CORIOLIS` Step for Complex Frequency Analysis if needed
+    - [x] Automatically insert `*COMPLEX FREQUENCY, CORIOLIS` Step for Complex Frequency Analysis if needed
     - [x] save project data in temporary directory that automatically deletes itself afterwards
     - [ ] Figure out a way to correctly identify modes between seperate runs

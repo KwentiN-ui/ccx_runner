@@ -45,16 +45,65 @@ class CampbellAnalysis:
     def callback_project_selected(self):
         # get all available centrif definitions from the .inp file
         centrif_definitions: list[str] = []
-        with open(
-            self.hauptfenster.job_dir / (self.hauptfenster.job_name + ".inp"), "r"
-        ) as inp_file:
-            for line in inp_file.readlines():
-                if "centrif" in line.lower() and len(line.split(",")) == 9:
-                    name = line.split(",")[0].strip()
-                    centrif_definitions.append(name)
+
+        project_file = self.hauptfenster.project_file_contents
+        if not project_file:
+            return
+        for line in project_file.splitlines():
+            if "centrif" in line.lower() and len(line.split(",")) == 9:
+                name = line.split(",")[0].strip()
+                centrif_definitions.append(name)
         dpg.configure_item(self.centrif_load_name, items=centrif_definitions)
         if len(centrif_definitions) > 0:
             dpg.set_value(self.centrif_load_name, centrif_definitions[0])
+
+    @property
+    def project_contains_complex_freq_step(self):
+        """
+        Checks the `.inp` file for a `*COMPLEX FREQUENCY, CORIOLIS` step.
+        """
+        input_file = self.hauptfenster.project_file_contents
+        if input_file is None:
+            raise ValueError("The input file could not be read.")
+        searchwords = ["*complex frequency", "coriolis"]
+        for line in input_file.splitlines():
+            if all(searchword in line.lower() for searchword in searchwords):
+                return True
+        else:
+            return False
+
+    @property
+    def project_with_added_complex_freq_step(self) -> str:
+        project_file = self.hauptfenster.project_file_contents
+        if project_file is None:
+            raise ValueError("Project file could not be read!")
+        if self.project_contains_complex_freq_step:
+            return project_file
+        else:
+            # get the frequency step substring
+            start_index: Optional[int] = None
+            end_index: Optional[int] = None
+            lines = [line.strip() for line in project_file.splitlines()]
+            for nr, line in enumerate(lines):
+                if line.lower().startswith("*step") and lines[
+                    nr + 1
+                ].lower().startswith("*frequency"):
+                    start_index = nr
+
+                if start_index is not None and line.lower().startswith("*end step"):
+                    end_index = nr
+                    break
+            if start_index is None or end_index is None:
+                raise ValueError("No Frequency Step found in the .inp file")
+            freq_step_lines = [
+                line.lower()
+                for line in lines[start_index : end_index + 1]
+                if not line.strip().startswith("**")
+            ]
+            freq_step_lines[1] = freq_step_lines[1].replace(
+                "frequency", "complex frequency,coriolis"
+            )
+            return project_file + "\n" + "\n".join(freq_step_lines)
 
     @property
     def speeds(self):
@@ -118,14 +167,10 @@ class CampbellAnalysis:
         )
         temp_pfad = Path(self.tempdir.name)
 
-        ### READ JOB DATA FROM .inp FILE
-        with open(
-            self.hauptfenster.job_dir / (self.hauptfenster.job_name + ".inp"), "r"
-        ) as inp_file:
-            original_inp = inp_file.readlines()
+        inp_file = self.project_with_added_complex_freq_step.splitlines()
 
         line_number: Optional[int] = None
-        for nr, line in enumerate(original_inp):
+        for nr, line in enumerate(inp_file):
             if (
                 boundary_name in line
                 and "centrif" in line.lower()
@@ -145,13 +190,13 @@ class CampbellAnalysis:
             filepath = project_dir / (name + ".inp")
 
             # Modify speed value
-            modified_project_file = original_inp.copy()
+            modified_project_file = inp_file.copy()
             parts = modified_project_file[line_number].split(",")
             parts[2] = str(speed)
             modified_project_file[line_number] = ",".join(parts)
 
-            with open(filepath, "w") as inp_file:
-                inp_file.writelines(modified_project_file)
+            with open(filepath, "w") as file:
+                file.write("\n".join(modified_project_file))
             self.project_files.append((name, speed, project_dir))
 
         # run the analysis for every subproject

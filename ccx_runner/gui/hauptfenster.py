@@ -11,6 +11,7 @@ from ccx_runner.ccx_logic.status import CalculixStatus
 from ccx_runner.gui.campbell_analysis import CampbellAnalysis
 from ccx_runner.ccx_logic.run_ccx import run_ccx
 
+
 class Hauptfenster:
     def __init__(self) -> None:
         self.startzeit = 0
@@ -168,6 +169,19 @@ class Hauptfenster:
                 ),
             )
 
+    @property
+    def project_file_contents(self) -> Optional[str]:
+        """
+        Returns the contents of the solver input file as a string.
+        """
+        contents = None
+        try:
+            with open(self.job_dir / (self.job_name + ".inp"), "r") as inp_file:
+                contents = inp_file.read()
+        except:
+            pass
+        return contents
+
     def reset_residual_plot(self):
         self._plotted_keys = []
         dpg.delete_item(self.plot_y_axis, children_only=True)
@@ -191,7 +205,7 @@ class Hauptfenster:
             items=items,
         )
 
-    def reset_after_process(self, identifier:Optional[str]=None):
+    def reset_after_process(self, identifier: Optional[str] = None):
         dpg.hide_item(self.kill_job_btn)
         dpg.show_item(self.start_job_btn)
         self.process = None
@@ -231,23 +245,26 @@ class Hauptfenster:
         dpg.show_item(self.timer)
         self.status.running = True
 
-        self.thread = threading.Thread(target=run_ccx, daemon=True, kwargs= {
-            "ccx_path": self.ccx_path,
-            "job_dir": self.job_dir,
-            "job_name": self.job_name,
-            "console_out": self.add_console_text,
-            "parser": self.status.parse,
-            "finished": self.reset_after_process,
-            "identifier": "main thread"
-        })
+        self.thread = threading.Thread(
+            target=run_ccx,
+            daemon=True,
+            kwargs={
+                "process": self.process,
+                "ccx_path": self.ccx_path,
+                "job_dir": self.job_dir,
+                "job_name": self.job_name,
+                "console_out": self.add_console_text,
+                "parser": self.status.parse,
+                "finished": self.reset_after_process,
+                "identifier": "main thread",
+            },
+        )
         self.thread.start()
 
     def kill_job(self):
         if self.process:
             self.process.terminate()
             self.process.wait()
-            self.reset_after_process()
-            self.add_console_text("Process successfully aborted!")
 
     def update(self):
         """

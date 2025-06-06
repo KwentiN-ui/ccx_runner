@@ -14,10 +14,11 @@ def run_ccx(
     ccx_path: Path,
     job_dir: Path,
     job_name: str,
+    process: Optional[subprocess.Popen[str]] = None,
     console_out: Optional[Callable] = None,
     parser: Optional[Callable] = None,
     finished: Optional[Callable] = None,
-    identifier:Optional[str] = None
+    identifier: Optional[str] = None,
 ):
     """
     Runs the calculix subprocess and monitors its outputs. `parser` and `console_out` are functions that take in a single line of text, aswell as an identifier string.
