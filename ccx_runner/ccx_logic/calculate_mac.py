@@ -1,6 +1,7 @@
 import numpy as np
 import itertools
 import textwrap
+from functools import cached_property
 
 
 class ResultBlock:
@@ -33,7 +34,7 @@ class ResultBlock:
     def __repr__(self) -> str:
         return "|".join(tuple(self.header.keys()))
 
-    @property
+    @cached_property
     def data(self):
         """
         Extracts all the data as one large Numpy Array.
@@ -98,7 +99,43 @@ class Eigenvector:
         return eigenvectors
 
 
-def calculate_mac(frd_1: str, frd_2: str, step: int = 3):
+def mac(mode1: Eigenvector, mode2: Eigenvector):
+    r"""
+    Compute the Modal Assurance Criterion. This assigns a scalar value between 0 and 1 which
+    describes the similarity between the two node shapes. This is needed to correctly identify
+    the same node shapes between different simulations.
+
+    $$
+    \text{MAC}(\{\phi_A\}, \{\phi_B\}) = \frac{|(\{\phi_A\}^T \{\phi_B\})|^2}{(\{\phi_A\}^T \{\phi_A\}) (\{\phi_B\}^T \{\phi_B\})}
+    $$
+    """
+    mode_1_data = mode1.data
+    mode_2_data = mode2.data
+
+    sort_indices = mode_1_data[:, 0].argsort()
+
+    sorted_1 = mode_1_data[sort_indices]
+    sorted_2 = mode_2_data[sort_indices]
+
+    # Sicherheitscheck (optional, aber empfohlen)
+    # Stellt sicher, dass die Knoten-IDs jetzt wirklich übereinstimmen
+    assert np.array_equal(
+        sorted_1[:, 0], sorted_2[:, 0]
+    ), "Knoten-IDs stimmen nach Sortierung nicht überein!"
+
+    flattened_1 = sorted_1[:, 1:].flatten()
+    flattened_2 = sorted_2[:, 1:].flatten()
+
+    numerator = np.abs(np.dot(flattened_1, flattened_2)) ** 2
+    denominator = np.dot(flattened_1, flattened_1) * np.dot(flattened_2, flattened_2)
+
+    mac_value = 0.0
+    if denominator > 1e-12:  # Avoid Zero Division
+        mac_value = numerator / denominator
+    return mac_value
+
+
+def calculate_mac_matrix(frd_1: str, frd_2: str, step: int = 3):
     "Computes the MAC in order to find matching Modes between 2 different Modal Simulation Results"
     res1 = ResultBlock.from_frd(frd_1)
     res2 = ResultBlock.from_frd(frd_2)
@@ -109,6 +146,8 @@ def calculate_mac(frd_1: str, frd_2: str, step: int = 3):
     eigenvects2 = [
         vec for vec in Eigenvector.from_result_blocks(res2) if vec.step == step
     ]
+    # print(eigenvects1[0].data.shape)
+    print(mac(eigenvects1[3], eigenvects2[2]))
 
 
 if __name__ == "__main__":
@@ -118,4 +157,4 @@ if __name__ == "__main__":
     with open("/home/qhuss/Downloads/simstep_785.3985_1.frd", "r") as file2:
         frd_2 = file2.read()
 
-    calculate_mac(frd_1, frd_2)
+    calculate_mac_matrix(frd_1, frd_2)
