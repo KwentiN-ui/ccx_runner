@@ -3,7 +3,7 @@ import threading
 from pathlib import Path
 import numpy as np
 import tempfile
-import itertools
+import json
 
 from typing import TYPE_CHECKING, Optional
 
@@ -71,9 +71,6 @@ class CampbellAnalysis:
 
         with dpg.group(horizontal=True, parent=tab_parent):
             dpg.add_button(label="Run Analysis", callback=self.run_campbell_analysis)
-            self.show_results_button = dpg.add_button(
-                label="Show Results", show=False, callback=self.plot_window.show
-            )
             self.number_of_threads_input = dpg.add_input_int(
                 default_value=3,
                 label="Number of threads",
@@ -81,8 +78,25 @@ class CampbellAnalysis:
                 min_value=1,
                 min_clamped=True,
             )
+            self.show_results_button = dpg.add_button(
+                label="Show Results", show=False, callback=self.plot_window.show
+            )
+            self.save_results_button = dpg.add_button(
+                label="Save results",
+                show=False,
+                callback=lambda: dpg.show_item(self.save_dialog),
+            )
 
         self.tab_bar = dpg.add_tab_bar(parent=tab_parent)
+
+        with dpg.file_dialog(
+            label="Save Analysis Data",
+            modal=True,
+            show=False,
+            default_filename="complex_frequency_results",
+            callback=self.callback_confirm_save_results,
+        ) as self.save_dialog:
+            dpg.add_file_extension(".json", label="JSON Formatted File")
 
     def callback_step_tool_triggered(self):
         n, start, end = dpg.get_values(self.speeds_tool)
@@ -185,13 +199,12 @@ class CampbellAnalysis:
                         continue
                     for mode_nr, mode in res2.modes.items():
                         mac = ref_mode.mac(mode)
-                        if mac > 0.98:
+                        if mac > 0.999:
                             found_matches.append(mode_nr)
                             break
 
-
         # Step 2: Build up a data_array that can be plotted easily
-        speeds = [res.speed for res in speed_results]
+        speeds = [rad_s_to_rpm(res.speed) for res in speed_results]
 
         freqs = {main_mode: [] for main_mode in matching_modes.keys()}
         for speedstep in speed_results:
@@ -219,6 +232,7 @@ class CampbellAnalysis:
         if speeds is None:
             return
         dpg.hide_item(self.show_results_button)
+        dpg.hide_item(self.save_results_button)
         ### HANDLE OUTPUT DIRECTORY ###
         n_threads = dpg.get_value(self.number_of_threads_input)
         self.thread_pool = threading.Semaphore(n_threads)
@@ -312,6 +326,13 @@ class CampbellAnalysis:
         self.tempdir.cleanup()
         self.plot_window.callback_analysis_complete()
         dpg.show_item(self.show_results_button)
+        dpg.show_item(self.save_results_button)
+
+    def callback_confirm_save_results(self, sender, appdata):
+        path = Path(appdata["file_path_name"])
+        with open(path, "w") as f:
+            data = self.modal_data
+            json.dump({"speeds_rpm": data[0], "modes_hz": data[1]}, f)
 
 
 class CampbellResultsWindow:
@@ -319,7 +340,7 @@ class CampbellResultsWindow:
         self.analysis = analysis
         with dpg.window(show=False) as self.window_id:
             with dpg.plot(width=-1, height=-1):
-                dpg.add_plot_axis(dpg.mvXAxis, label="revolution speed [rpm]")
+                dpg.add_plot_axis(dpg.mvXAxis, label="revolution speed [rpm]", auto_fit=True)
                 self.plot_axis = dpg.add_plot_axis(
                     dpg.mvYAxis, label="Eigenfrequency [Hz]"
                 )
@@ -333,7 +354,7 @@ class CampbellResultsWindow:
         for main_mode_no, freq_list in self.freqs.items():
             dpg.add_line_series(
                 tuple(
-                    rad_s_to_rpm(speed)
+                    speed
                     for speed, freq in zip(self.speeds, freq_list)
                     if freq is not None
                 ),
