@@ -95,6 +95,8 @@ class CampbellAnalysis:
             show=False,
             default_filename="complex_frequency_results",
             callback=self.callback_confirm_save_results,
+            width=800,
+            height=600
         ) as self.save_dialog:
             dpg.add_file_extension(".json", label="JSON Formatted File")
 
@@ -214,7 +216,7 @@ class CampbellAnalysis:
                     try:
                         freq_list.append(speedstep.modes[mode_no].eigenfrequency)
                     except:
-                        freq_list.append(None)  # No valid frequency
+                        freq_list.append(-1)  # No valid frequency
                 freqs[main_mode] = freq_list
 
         return speeds, freqs
@@ -340,7 +342,9 @@ class CampbellResultsWindow:
         self.analysis = analysis
         with dpg.window(show=False) as self.window_id:
             with dpg.plot(width=-1, height=-1):
-                dpg.add_plot_axis(dpg.mvXAxis, label="revolution speed [rpm]", auto_fit=True)
+                dpg.add_plot_axis(
+                    dpg.mvXAxis, label="revolution speed [rpm]", auto_fit=True
+                )
                 self.plot_axis = dpg.add_plot_axis(
                     dpg.mvYAxis, label="Eigenfrequency [Hz]"
                 )
@@ -353,16 +357,10 @@ class CampbellResultsWindow:
         dpg.delete_item(self.plot_axis, children_only=True)
         for main_mode_no, freq_list in self.freqs.items():
             dpg.add_line_series(
-                tuple(
-                    speed
-                    for speed, freq in zip(self.speeds, freq_list)
-                    if freq is not None
+                tuple( # filter out invalid frequencies
+                    speed for speed, freq in zip(self.speeds, freq_list) if freq != -1
                 ),
-                tuple(
-                    freq
-                    for speed, freq in zip(self.speeds, freq_list)
-                    if freq is not None
-                ),
+                tuple(freq for freq in freq_list if freq != -1),
                 parent=self.plot_axis,
             )
         if self.analysis.speeds:
