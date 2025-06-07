@@ -217,6 +217,9 @@ class CampbellAnalysis:
                         freq_list.append(speedstep.modes[mode_no].eigenfrequency)
                     except:
                         freq_list.append(-1)  # No valid frequency
+                # If results are too short, pad them with invalid frequs
+                if len(freq_list)<len(speeds):
+                    freq_list += [-1]* (len(speeds) - len(freq_list))
                 freqs[main_mode] = freq_list
 
         return speeds, freqs
