@@ -11,15 +11,16 @@ if TYPE_CHECKING:
     from ccx_runner.gui.hauptfenster import Hauptfenster
 
 from ccx_runner.ccx_logic.run_ccx import run_ccx
+from ccx_runner.ccx_logic.calculate_mac import ResultBlock, Eigenvector
 
 
 class CampbellAnalysis:
     def __init__(self, hauptfenster: "Hauptfenster", tab_parent: int) -> None:
         self.hauptfenster = hauptfenster
         self.project_instance_data = {}
-        self.plot_window = CampbellPlot(self)
+        self.plot_window = CampbellResultsWindow(self)
 
-        self.results: dict[float, dict[int, tuple[float, float]]] = {}
+        self.results: dict[float, ComplexModalParseResult] = {}
 
         self.speeds_tool: list[int] = []  # n, from, to
 
@@ -69,8 +70,8 @@ class CampbellAnalysis:
 
         with dpg.group(horizontal=True, parent=tab_parent):
             dpg.add_button(label="Run Analysis", callback=self.run_campbell_analysis)
-            self.plot_button = dpg.add_button(
-                label="Show Plot", show=False, callback=self.plot_window.show
+            self.show_results_button = dpg.add_button(
+                label="Show Results", show=False, callback=self.plot_window.show
             )
             self.number_of_threads_input = dpg.add_input_int(
                 default_value=3,
@@ -163,44 +164,8 @@ class CampbellAnalysis:
             return [rpm_to_rad_s(float(speed)) for speed in speeds_inp.split(",")]
 
     @property
-    def modal_data(self) -> dict[int, dict[str, list[float]]]:
-        mod_data = collections.defaultdict(
-            lambda: {"speed rad/s": [], "freq hz": [], "real": [], "imag": []}
-        )
-
-        for speed, modes in self.results.items():
-            for mode_nr, (real, imag) in modes.items():
-                mod_data[mode_nr]["speed rad/s"].append(speed)
-                mod_data[mode_nr]["freq hz"].append(abs(real / (2 * np.pi)))
-                mod_data[mode_nr]["real"].append(real)
-                mod_data[mode_nr]["imag"].append(imag)
-
-        # 3. Sortierschritt anpassen, um alle vier Listen zu synchronisieren
-        for mode_nr in mod_data:
-            # Alle vier Listen koppeln
-            paired_data = zip(
-                mod_data[mode_nr]["speed rad/s"],
-                mod_data[mode_nr]["freq hz"],
-                mod_data[mode_nr]["real"],
-                mod_data[mode_nr]["imag"],
-            )
-
-            # Nach Geschwindigkeit sortieren
-            sorted_pairs = sorted(paired_data)
-
-            # Gekoppelte Daten wieder in die vier Listen trennen
-            if sorted_pairs:
-                s_sort, m_sort, r_sort, i_sort = zip(*sorted_pairs)
-            else:
-                s_sort, m_sort, r_sort, i_sort = [], [], [], []
-
-            # Dictionary mit den sortierten Listen aktualisieren
-            mod_data[mode_nr]["speed rad/s"] = list(s_sort)
-            mod_data[mode_nr]["freq hz"] = list(m_sort)
-            mod_data[mode_nr]["real"] = list(r_sort)
-            mod_data[mode_nr]["imag"] = list(i_sort)
-
-        return mod_data
+    def modal_data(self):
+        pass
 
     def run_cxx_limited_concurrency(self, **kwargs):
         with self.thread_pool:
@@ -214,7 +179,7 @@ class CampbellAnalysis:
         speeds = self.speeds
         if speeds is None:
             return
-        dpg.hide_item(self.plot_button)
+        dpg.hide_item(self.show_results_button)
         ### HANDLE OUTPUT DIRECTORY ###
         n_threads = dpg.get_value(self.number_of_threads_input)
         self.thread_pool = threading.Semaphore(n_threads)
@@ -298,15 +263,14 @@ class CampbellAnalysis:
         self.results = {}
         # Collect all the Modal Analysis result files
         for name, speed, project_dir in self.project_files:
-            with open(project_dir / (name + ".dat"), "r") as result_file:
-                result_file_contents = result_file.read()
-            parser = ComplexModalParseResult(result_file_contents, speed)
-            self.results[speed] = parser.eigenvalue_output
-        dpg.show_item(self.plot_button)
+            self.results[speed] = ComplexModalParseResult(project_dir, name, speed, 3)
+
+        dpg.show_item(self.show_results_button)
         self.tempdir.cleanup()
 
 
-class CampbellPlot:
+class CampbellResultsWindow:
+    # TODO BROKEN
     def __init__(self, analysis: CampbellAnalysis) -> None:
         self.analysis = analysis
         with dpg.window(show=False) as self.window_id:
@@ -336,42 +300,23 @@ class CampbellPlot:
 
 
 class ComplexModalParseResult:
-    def __init__(self, file_contents: str, speed: float) -> None:
+    def __init__(
+        self, result_directory: Path, name: str, speed: float, complex_step_no: int
+    ) -> None:
+        self.directory = result_directory
+        self.name = name
         self.speed = speed
-        self.file_contents = file_contents
-        self._eigenvalue_output: dict[int, tuple[float, float]] = {}
         self._modal_assurance_matrix: np.ndarray
-        self.parse()
 
-    @property
-    def eigenvalue_output(self) -> dict[int, tuple[float, float]]:
-        """
-        Dictionary that stores the Modal Data for a specific speed as `{modenr:(real[rad/time],complex[rad/time])}`
-        """
-        return self._eigenvalue_output
+        with open(result_directory / (name + ".frd"), "r") as f:
+            frd_content = f.read()
 
-    def parse(self):
-        lines = self.file_contents.splitlines()
-        counter = 0
-        startzeile: Optional[int] = None
-        for nr, line in enumerate(lines):
-            if "E I G E N V A L U E   O U T P U T" in line:
-                counter += 1
-                if counter == 2:
-                    startzeile = nr + 6
-
-        if startzeile is None:
-            raise ValueError("Es wurde kein COMPLEX FREQUENCY output gefunden!")
-        else:
-            curline = startzeile
-            while len(lines[curline].strip()) > 0:
-                mode_no, real_rad, real_cycl, imag_rad = (
-                    data.strip() for data in lines[curline].strip().split("  ")
-                )
-                real = float(real_rad)
-                imag = float(imag_rad)
-                self._eigenvalue_output[int(mode_no)] = (real, imag)
-                curline += 1
+        # Extract the modes from the Results file
+        self.modes = [
+            vec
+            for vec in Eigenvector.from_result_blocks(ResultBlock.from_frd(frd_content))
+            if vec.step == complex_step_no
+        ]
 
 
 def rad_s_to_rpm(hz: float) -> float:
