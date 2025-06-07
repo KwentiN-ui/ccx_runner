@@ -2,16 +2,17 @@ import dearpygui.dearpygui as dpg
 import threading
 from pathlib import Path
 import numpy as np
-import collections
 import tempfile
+import itertools
 
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from ccx_runner.gui.hauptfenster import Hauptfenster
 
+from ccx_runner.ccx_logic.complex_modal.Eigenvector import Eigenvector
 from ccx_runner.ccx_logic.run_ccx import run_ccx
-from ccx_runner.ccx_logic.calculate_mac import ResultBlock, Eigenvector
+from ccx_runner.ccx_logic.result import ResultBlock
 
 
 class CampbellAnalysis:
@@ -20,13 +21,13 @@ class CampbellAnalysis:
         self.project_instance_data = {}
         self.plot_window = CampbellResultsWindow(self)
 
-        self.results: dict[float, ComplexModalParseResult] = {}
+        self.speed_step_results: list[ComplexModalParseResult] = []
 
         self.speeds_tool: list[int] = []  # n, from, to
 
         dpg.add_text(
             'This tab provides the tools to parametrize a "*COMPLEX FREQUENCY, CORIOLIS" step,'
-            " by running the analysis multiple times with different speeds. The complex frequency step gets automatically inserted if missing, but a standard frequency step is mandatory.",
+            " by running the analysis multiple times with different speeds. The complex frequency step gets automatically inserted if missing, but a standard frequency step as step no 3 is mandatory.",
             wrap=800,
             parent=tab_parent,
         )
@@ -165,7 +166,45 @@ class CampbellAnalysis:
 
     @property
     def modal_data(self):
-        pass
+        speed_results = self.speed_step_results
+        speed_results.sort(key=lambda res: res.speed)
+
+        # Step 1: Find all matching Eigenvectors that describe the same mode
+        matching_modes: dict[int, list[int]] = {
+            mode.mode_nr: [mode.mode_nr] for mode in speed_results[0].modes.values()
+        }
+        for i in range(len(speed_results)):
+            if i < len(speed_results) - 1:
+                res1 = speed_results[i]
+                res2 = speed_results[i + 1]
+
+                for main_mode, found_matches in matching_modes.items():
+                    try:
+                        ref_mode = res1.modes[found_matches[-1]]
+                    except KeyError:
+                        continue
+                    for mode_nr, mode in res2.modes.items():
+                        mac = ref_mode.mac(mode)
+                        if mac > 0.98:
+                            found_matches.append(mode_nr)
+                            break
+
+
+        # Step 2: Build up a data_array that can be plotted easily
+        speeds = [res.speed for res in speed_results]
+
+        freqs = {main_mode: [] for main_mode in matching_modes.keys()}
+        for speedstep in speed_results:
+            for main_mode, found_matches in matching_modes.items():
+                freq_list = []
+                for mode_no in found_matches:
+                    try:
+                        freq_list.append(speedstep.modes[mode_no].eigenfrequency)
+                    except:
+                        freq_list.append(None)  # No valid frequency
+                freqs[main_mode] = freq_list
+
+        return speeds, freqs
 
     def run_cxx_limited_concurrency(self, **kwargs):
         with self.thread_pool:
@@ -260,17 +299,22 @@ class CampbellAnalysis:
             self.all_thread_complete()
 
     def all_thread_complete(self):
-        self.results = {}
+        self.speed_step_results = []
         # Collect all the Modal Analysis result files
         for name, speed, project_dir in self.project_files:
-            self.results[speed] = ComplexModalParseResult(project_dir, name, speed, 3)
+            with open(project_dir / (name + ".frd")) as f:
+                self.speed_step_results.append(
+                    ComplexModalParseResult(
+                        f.read(), name, speed, 3
+                    )  # TODO Change hardcoded Step to something smarter
+                )
 
-        dpg.show_item(self.show_results_button)
         self.tempdir.cleanup()
+        self.plot_window.callback_analysis_complete()
+        dpg.show_item(self.show_results_button)
 
 
 class CampbellResultsWindow:
-    # TODO BROKEN
     def __init__(self, analysis: CampbellAnalysis) -> None:
         self.analysis = analysis
         with dpg.window(show=False) as self.window_id:
@@ -280,17 +324,26 @@ class CampbellResultsWindow:
                     dpg.mvYAxis, label="Eigenfrequency [Hz]"
                 )
 
+    def callback_analysis_complete(self):
+        self.speeds, self.freqs = self.analysis.modal_data
+
     def show(self):
         dpg.show_item(self.window_id)
         dpg.delete_item(self.plot_axis, children_only=True)
-        for mode, daten in enumerate(self.analysis.modal_data.values()):
-            speed, real, imag, freq = (
-                rad_s_to_rpm_array(np.array(daten["speed rad/s"])),
-                np.array(daten["real"]),
-                np.array(daten["imag"]),
-                np.array(daten["freq hz"]),
+        for main_mode_no, freq_list in self.freqs.items():
+            dpg.add_line_series(
+                tuple(
+                    rad_s_to_rpm(speed)
+                    for speed, freq in zip(self.speeds, freq_list)
+                    if freq is not None
+                ),
+                tuple(
+                    freq
+                    for speed, freq in zip(self.speeds, freq_list)
+                    if freq is not None
+                ),
+                parent=self.plot_axis,
             )
-            dpg.add_line_series(tuple(speed), tuple(freq), parent=self.plot_axis)
         if self.analysis.speeds:
             max_speed = rad_s_to_rpm(max(self.analysis.speeds))
             for i in range(3):
@@ -301,22 +354,18 @@ class CampbellResultsWindow:
 
 class ComplexModalParseResult:
     def __init__(
-        self, result_directory: Path, name: str, speed: float, complex_step_no: int
+        self, frd_content: str, name: str, speed: float, complex_step_no: int
     ) -> None:
-        self.directory = result_directory
         self.name = name
         self.speed = speed
         self._modal_assurance_matrix: np.ndarray
 
-        with open(result_directory / (name + ".frd"), "r") as f:
-            frd_content = f.read()
-
         # Extract the modes from the Results file
-        self.modes = [
-            vec
+        self.modes = {
+            vec.mode_nr: vec
             for vec in Eigenvector.from_result_blocks(ResultBlock.from_frd(frd_content))
             if vec.step == complex_step_no
-        ]
+        }
 
 
 def rad_s_to_rpm(hz: float) -> float:
