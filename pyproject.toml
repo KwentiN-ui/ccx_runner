@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -12,6 +12,7 @@ description = "Run and monitor Calculix Solutions in a GUI window"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "setuptools",
     "dearpygui",
     "platformdirs",
     "numpy",
