@@ -209,7 +209,7 @@ class CampbellAnalysis:
                     ref_mode = res1.modes[last_chain_node_nr]
                     for mode_nr, mode in res2.modes.items():
                         mac = ref_mode.mac(mode)
-                        if mac > 0.999:
+                        if mac > 0.999999:
                             found_matches.append(mode_nr)
                             break
                     else:
