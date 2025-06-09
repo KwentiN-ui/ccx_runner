@@ -96,7 +96,7 @@ class CampbellAnalysis:
             default_filename="complex_frequency_results",
             callback=self.callback_confirm_save_results,
             width=800,
-            height=600
+            height=600,
         ) as self.save_dialog:
             dpg.add_file_extension(".json", label="JSON Formatted File")
 
@@ -182,28 +182,41 @@ class CampbellAnalysis:
 
     @property
     def modal_data(self):
+        """
+        Read all data from the result files, get matching eigenmodes and output their data as `(speeds[rpm]), {mode_nr:(eigenfrequency[Hz])}`
+        """
         speed_results = self.speed_step_results
         speed_results.sort(key=lambda res: res.speed)
 
         # Step 1: Find all matching Eigenvectors that describe the same mode
-        matching_modes: dict[int, list[int]] = {
-            mode.mode_nr: [mode.mode_nr] for mode in speed_results[0].modes.values()
-        }
-        for i in range(len(speed_results)):
-            if i < len(speed_results) - 1:
-                res1 = speed_results[i]
-                res2 = speed_results[i + 1]
+        # Initialize Dictionary that holds all nodes that match the key "main" node number from the first step
+        matching_modes: dict[int, list[int]] = {}
+        for mode in speed_results[0].modes.values():
+            matching_modes[mode.mode_nr] = [mode.mode_nr]
 
-                for main_mode, found_matches in matching_modes.items():
-                    try:
-                        ref_mode = res1.modes[found_matches[-1]]
-                    except KeyError:
-                        continue
+        for i in range(len(speed_results)):
+            if i >= len(speed_results) - 1:
+                continue
+
+            res1 = speed_results[i]
+            res2 = speed_results[i + 1]
+
+            for main_mode, found_matches in matching_modes.items():
+                # Get the last confirmed mode to check for a follow-up mode in the new step
+                last_chain_node_nr = found_matches[-1]
+                if last_chain_node_nr != -1:
+                    # The chain continues
+                    ref_mode = res1.modes[last_chain_node_nr]
                     for mode_nr, mode in res2.modes.items():
                         mac = ref_mode.mac(mode)
                         if mac > 0.999:
                             found_matches.append(mode_nr)
                             break
+                    else:
+                        found_matches.append(-1)  # Mark the end of the chain
+                else:
+                    # A follow up mode from the last step could not be found. Therefore the chain was ended (denoted by -1)
+                    pass
 
         # Step 2: Build up a data_array that can be plotted easily
         speeds = [rad_s_to_rpm(res.speed) for res in speed_results]
@@ -218,8 +231,8 @@ class CampbellAnalysis:
                     except:
                         freq_list.append(-1)  # No valid frequency
                 # If results are too short, pad them with invalid frequs
-                if len(freq_list)<len(speeds):
-                    freq_list += [-1]* (len(speeds) - len(freq_list))
+                if len(freq_list) < len(speeds):
+                    freq_list += [-1] * (len(speeds) - len(freq_list))
                 freqs[main_mode] = freq_list
 
         return speeds, freqs
@@ -360,7 +373,7 @@ class CampbellResultsWindow:
         dpg.delete_item(self.plot_axis, children_only=True)
         for main_mode_no, freq_list in self.freqs.items():
             dpg.add_line_series(
-                tuple( # filter out invalid frequencies
+                tuple(  # filter out invalid frequencies
                     speed for speed, freq in zip(self.speeds, freq_list) if freq != -1
                 ),
                 tuple(freq for freq in freq_list if freq != -1),

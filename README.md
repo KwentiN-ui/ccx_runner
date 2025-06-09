@@ -31,3 +31,4 @@ pipx install git+https://github.com/KwentiN-ui/ccx_runner.git
     - [x] Automatically insert `*COMPLEX FREQUENCY, CORIOLIS` Step for Complex Frequency Analysis if needed
     - [x] save project data in temporary directory that automatically deletes itself afterwards
     - [x] Figure out a way to correctly identify modes between seperate runs
+    - [ ] Implement an output window that shows the current status
