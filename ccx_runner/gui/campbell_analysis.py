@@ -108,6 +108,9 @@ class CampbellAnalysis:
         )
 
     def callback_project_selected(self):
+        """
+        Upon selecting a project file, the available centrifugal loads are to be listed inside the corresponding combo box. 
+        """
         # get all available centrif definitions from the .inp file
         centrif_definitions: list[str] = []
 
@@ -139,6 +142,10 @@ class CampbellAnalysis:
 
     @property
     def project_with_added_complex_freq_step(self) -> str:
+        """
+        Returns a modified version of the provided `.inp` file, that appends a `*COMPLEX FREQUENCY, CORIOLIS`
+        step to the project as a duplicate of the last `*FREQUENCY` step.
+        """
         project_file = self.hauptfenster.project_file_contents
         if project_file is None:
             raise ValueError("Project file could not be read!")
@@ -242,7 +249,7 @@ class CampbellAnalysis:
             run_ccx(**kwargs)
 
     def run_campbell_analysis(self):
-        ### CHECKS BEFORE STARTING
+        ### Early return checks in case something is missing
         boundary_name = dpg.get_value(self.centrif_load_name)
         if boundary_name == "":
             return
@@ -251,6 +258,7 @@ class CampbellAnalysis:
             return
         dpg.hide_item(self.show_results_button)
         dpg.hide_item(self.save_results_button)
+
         ### HANDLE OUTPUT DIRECTORY ###
         n_threads = dpg.get_value(self.number_of_threads_input)
         self.thread_pool = threading.Semaphore(n_threads)
@@ -275,8 +283,8 @@ class CampbellAnalysis:
 
         self.project_files: list[tuple[str, float, Path]] = []
         # Setup a project directory for every speed step
-        for i, speed in enumerate(speeds):
-            name = f"simstep_{speed}_{i}"
+        for i, speed_rad_s in enumerate(speeds):
+            name = f"simstep_{speed_rad_s}_{i}"
             project_dir = temp_pfad / name
             project_dir.mkdir()
             filepath = project_dir / (name + ".inp")
@@ -284,19 +292,19 @@ class CampbellAnalysis:
             # Modify speed value
             modified_project_file = inp_file.copy()
             parts = modified_project_file[line_number].split(",")
-            parts[2] = str(speed)
+            parts[2] = str(speed_rad_s*2) # times two because PrePoMax does the same, propably because of tau/s
             modified_project_file[line_number] = ",".join(parts)
 
             with open(filepath, "w") as file:
                 file.write("\n".join(modified_project_file))
-            self.project_files.append((name, speed, project_dir))
+            self.project_files.append((name, speed_rad_s, project_dir))
 
         # run the analysis for every subproject
         dpg.delete_item(self.tab_bar, children_only=True)
         self.project_instance_data = {}
-        for name, speed, project_dir in self.project_files:
+        for name, speed_rad_s, project_dir in self.project_files:
             self.project_instance_data[name] = {}
-            with dpg.tab(label=str(round(rad_s_to_rpm(speed), 3)), parent=self.tab_bar):
+            with dpg.tab(label=str(round(rad_s_to_rpm(speed_rad_s), 3)), parent=self.tab_bar):
                 self.project_instance_data[name]["textbox"] = dpg.add_input_text(
                     readonly=True, multiline=True, width=-1, height=-1
                 )
