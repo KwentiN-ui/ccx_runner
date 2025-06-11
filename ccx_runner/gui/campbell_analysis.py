@@ -411,16 +411,21 @@ class ComplexModalParseResult:
         }
 
 
-def rad_s_to_rpm(hz: float) -> float:
-    return hz * 9.5492966
+def rad_s_to_rpm(rad_s: float) -> float:
+    return rad_s * 9.5492966
 
+def rad_s_to_hz(rad_s:float) -> float:
+    return rad_s * 0.159155
+
+def hz_to_rad_s(hz:float):
+    return hz * 6.283185
 
 def rpm_to_rad_s(rpm: float) -> float:
     return rpm * 0.1047198
 
 
-def rad_s_to_rpm_array(hz: np.ndarray) -> np.ndarray:
-    return rad_s_to_rpm(hz)  # type: ignore
+def rad_s_to_rpm_array(rad_s: np.ndarray) -> np.ndarray:
+    return rad_s_to_rpm(rad_s)  # type: ignore
 
 
 def rpm_to_rad_s_array(rpm: np.ndarray) -> np.ndarray:
