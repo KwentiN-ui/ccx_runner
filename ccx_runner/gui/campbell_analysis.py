@@ -109,7 +109,7 @@ class CampbellAnalysis:
 
     def callback_project_selected(self):
         """
-        Upon selecting a project file, the available centrifugal loads are to be listed inside the corresponding combo box. 
+        Upon selecting a project file, the available centrifugal loads are to be listed inside the corresponding combo box.
         """
         # get all available centrif definitions from the .inp file
         centrif_definitions: list[str] = []
@@ -292,7 +292,9 @@ class CampbellAnalysis:
             # Modify speed value
             modified_project_file = inp_file.copy()
             parts = modified_project_file[line_number].split(",")
-            parts[2] = str(speed_rad_s*2) # times two because PrePoMax does the same, propably because of tau/s
+            parts[2] = str(
+                speed_rad_s * 2
+            )  # times two because PrePoMax does the same, propably because of tau/s
             modified_project_file[line_number] = ",".join(parts)
 
             with open(filepath, "w") as file:
@@ -304,7 +306,9 @@ class CampbellAnalysis:
         self.project_instance_data = {}
         for name, speed_rad_s, project_dir in self.project_files:
             self.project_instance_data[name] = {}
-            with dpg.tab(label=str(round(rad_s_to_rpm(speed_rad_s), 3)), parent=self.tab_bar):
+            with dpg.tab(
+                label=str(round(rad_s_to_rpm(speed_rad_s), 3)), parent=self.tab_bar
+            ):
                 self.project_instance_data[name]["textbox"] = dpg.add_input_text(
                     readonly=True, multiline=True, width=-1, height=-1
                 )
@@ -391,7 +395,9 @@ class CampbellResultsWindow:
             max_speed = rad_s_to_rpm(max(self.analysis.speeds))
             for i in range(3):
                 dpg.add_line_series(
-                    [0, max_speed], [0, (i + 1) * max_speed], parent=self.plot_axis
+                    [0, max_speed],
+                    [0, rpm_to_hz((i + 1) * max_speed)],
+                    parent=self.plot_axis,
                 )
 
 
@@ -414,14 +420,25 @@ class ComplexModalParseResult:
 def rad_s_to_rpm(rad_s: float) -> float:
     return rad_s * 9.5492966
 
-def rad_s_to_hz(rad_s:float) -> float:
+
+def rad_s_to_hz(rad_s: float) -> float:
     return rad_s * 0.159155
 
-def hz_to_rad_s(hz:float):
+
+def hz_to_rad_s(hz: float):
     return hz * 6.283185
+
 
 def rpm_to_rad_s(rpm: float) -> float:
     return rpm * 0.1047198
+
+
+def rpm_to_hz(rpm: float):
+    return rpm / 60
+
+
+def hz_to_rpm(hz: float):
+    return hz * 60
 
 
 def rad_s_to_rpm_array(rad_s: np.ndarray) -> np.ndarray:
